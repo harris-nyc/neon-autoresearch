@@ -1,0 +1,10 @@
+data/
+runs/
+hf_cache/
+.compile_cache/
+.venv/
+__pycache__/
+*.pyc
+.env
+orchestrator/.mnt_work/
+orchestrator/.mnt_data/

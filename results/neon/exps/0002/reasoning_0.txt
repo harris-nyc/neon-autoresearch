@@ -1,0 +1,29 @@
+**Experiment 2: Deep Dive and Hypothesis**
+
+Okay, here's the plan. We've got five minutes on the H100, and we need to make the most of it. We've seen a clear improvement going from Experiment 0 (baseline) to Experiment 1. We're cutting the batch size to `2**17` to test it and adjust the learning rates accordingly.
+
+Experiment 1 was a big win with halved batch size and scaled down learning rates by 0.75, giving a substantial bpb improvement. We also saw that the memory footprint and the time per step decreased. The MFU, however, is at 39%, which gives a huge room for improvement. The key is in figuring out the largest levers.
+
+We've got 50.3M parameters and are processing ~490M tokens, which means ~10 tokens per total parameter. We need to go beyond just reducing the batch size. Experiment 1 already indicates that.
+
+We're going to dive into key considerations, prioritizing a systematic approach. The plan is to test and analyze the highest-leverage research directions. Let's look at a structured approach:
+
+1.  **Batch Size and Learning Rate Optimization**: We know that `2**18` gave a -0.0089 bpb, so testing `2**17` with scaled learning rates is our primary test. We will also carefully keep in mind that the `WEIGHT_DECAY` also scales linearly with the learning rate, so we need to track that.
+2.  **Model Architecture and Sizing**: We're currently using `DEPTH=8`, `ASPECT_RATIO=64`, and `n_embd=512`. We're going to consider whether `n_head=8` would provide richer attention patterns, if we can scale to a bigger `n_embd` using the efficient FlashAttention. Is our model too small (under-parameterized) or too big (over-parameterized)?
+3.  **MLP Activation**: We're using ReLU^2. Are SwiGLU or GeGLU worth testing? It's something to investigate down the road.
+4.  **Attention and Value Embeddings**: Is `WINDOW_PATTERN="SSSL"` efficient, or should we use more full-context attention. Full attention might be worth the small overhead if it makes the model more powerful. We should also investigate whether a learnable QK-scale improves the attention sharpness. We must also optimize the value embeddings.
+5.  **Optimizer & Training Dynamics**: We are using MuonAdamW. We need to consider how to optimize the lr schedule, weight decay and EMA / SWA.
+
+Now, regarding Experiment 2. Here's what we are setting up:
+
+*   **Batch Size**: Halving the `TOTAL_BATCH_SIZE` to `2**17`. This should bring down the peak VRAM usage to ~23 GB. We will be using `DEVICE_BATCH_SIZE=64`, and we know this keeps the GPU busy due to the data loader.
+*   **Learning Rates**: Given the halved batch size, we're scaling down the learning rates by ~0.75x:
+    *   `EMBEDDING_LR = 0.35`
+    *   `UNEMBEDDING_LR = 0.0022`
+    *   `MATRIX_LR = 0.022`
+    *   `SCALAR_LR = 0.3`
+*   **Weight Decay**: We're keeping `WEIGHT_DECAY = 0.2` for now, recognizing that it's important to monitor its effects as we make batch size changes, but not changing it so that it will be a constant, isolating the batch size.
+
+We have double-checked that all batch size and eval steps will divide evenly. Let's do this!
+
+

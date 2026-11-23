@@ -1,0 +1,13 @@
+**Collision Filtering and N-gram Injection in Transformers**
+
+Okay, so we're building a refined collision filtering mechanism for the Transformer, aiming for a clean and efficient implementation. The core idea is to add strict, per-head collision-filtering gates at three key layers: input (Layer 0), mid-layer (Layer 2 - DeepSeek-Engram style), and output (Layer 8). We're reusing the existing 4-order n-gram tables, maintaining the same parameter count as our baseline.
+
+At Layer 0, the goal is to gate the input embeddings before they're added to the word embedding. We calculate a context-aware query based on the token and its immediate neighbors (token triples), shift the word embedding, and project to a query dimension (K=8). Then, we generate per-head key projections from the n-gram embeddings, scale, and compute the context. After that, we use the `smooth_key_match` to check for hash collisions. This context is used to generate the gates for each head, which modulate each head's input embedding before concatenation. This design is cheap computationally and allows the model to selectively suppress or promote the information.
+
+Layer 2 introduces a DeepSeek-Engram mid-layer injection. We're gating the input n-gram memory, which has been contextualized. This is super efficient as we are re-using embeddings. These n-gram memories are gated using the state from the previous block. After gating, we inject the n-gram embeddings using an 3-tap causal depthwise convolution for smooth interactions.
+
+Layer 8 provides output collision filtering. The goal here is strict per-head gating *before* projection. We're applying per-head keys before the final projection and the LM head. We generate independent keys from each of the n-gram heads. This allows for collision filtering before the final projections and lm_head application.
+
+I've meticulously reviewed the implementation. Linear layers are explicitly defined, the optimizer is accounted for, weight initialization is carefully managed to guarantee a neutral starting state, and dimension checks are solid. I've confirmed that the BOS masking and n-gram table access are correct and the Layer 2 injection math is sound. The code is optimized to reuse data and reduce unnecessary memory overhead. The total FLOPs and VRAM considerations seem reasonable. The resulting architecture aims to achieve significant gains.
+
+

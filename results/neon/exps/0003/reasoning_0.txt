@@ -1,0 +1,24 @@
+**Experiment Analysis: Deep Dive & Architecture Levers**
+
+Alright, let's get into it. We've got our baseline results, and now it's time to really dig in and see how we can optimize this model and training setup. I'm thinking, where are the biggest gains to be made, and how can we get there with a fixed 300-second compute budget on the H100?
+
+First, let's review the setup. We have EXP 0 as our baseline, where with a 50.3M parameter model and TOTAL_BATCH_SIZE = 2^19. EXP 1 saw an improvement by halving the batch size (2^18), and EXP 2 saw a further, if smaller, improvement by halving the batch size again (2^17). We also saw that MFU (Model Flops Utilization) dropped a bit when batch size was reduced. This makes sense as optimizer overhead per step grows, though a very important note is that these batch size reductions improved the val_bpb.
+
+Right now, it's clear the baseline is not compute optimal for the hardware we have. This calls for a reevaluation of our model size, depth, and aspect ratio. From EXP 2 results and the current 38.25% MFU, it's obvious the current 512-dim model is severely underutilizing the H100. Those small matrix dimensions are not efficient on an H100. Peak VRAM utilization with BS=64 (131K tokens) was also still way below the 80GB capacity, so it seems we can significantly increase model size, or make other architectural or algorithmic changes to boost our performance within the same wall-clock time.
+
+So we can ask whether bigger model size (deeper/wider) with more steps is a better route than keeping a small model that might be underutilized. We calculate model sizes, FLOPs and parameter counts for different model shapes. This will help us avoid scaling mistakes and help us make a decision.
+
+Now, let's move beyond the basics and get into the meat of it. We've got a model with ~50M parameters, but is it the right architecture? I think there is a significant gain to be made on architecture. Let's dig line-by-line in `train.py`.
+
+The ReLU^2 activation is fine. It is an efficient activation with 2 matmuls vs 3 for SwiGLU. Attention has only 4 heads for a 512-dim model. That's a huge opportunity. Standard practice uses 8 heads for the same size, which means double the diversity with the same FLOPs! So let's check: will FA3 still run fast at head_dim=64? YES! In fact, FA3 is heavily optimized for head dim of 64 and 128. We should be testing 8 heads.
+
+Then, there is the attention window. `"SSSL"` is what's used. This restricts attention and is said to give a speedup. Causal sliding windows gives a 75% of full causal attention, however this speedup is minimal compared to the total FLOPs or time. It also appears the window restriction might hurt val_bpb.
+
+Next, projections. The current implementation does three separate `nn.Linear` calls. We know `torch.compile` can fuse, but more importantly, orthogonalizing Q, K, V separately is better for Muon, so we will keep this.
+
+Then there is the embedding and logits. We have separate embeddings and an lm_head which is important. The value embeddings (ve) are interesting and we can do more. The value_embed is used in layers 1, 3, 5, and 7, which adds 4M to the param count of each embedding, and the gate to them is within the transformer architecture and is optimized by Muon. The `wte` and `lm_head` are not tied. The embeddings are cast to bfloat16. Hold up.
+
+The bfloat16 embeddings are zeroed out when the LR gets low. That is because the ULP is `2^-7 = 0.0078`. When LR is below `0.003`, it's essentially going to get rounded to zero. Since we have such a high embedding LR, this can be an issue. Other params are float32.
+
+Finally, we have `adamw_step_fused` and `muon_step_fused`. `lm_head` uses AdamW with a weight decay of 0, `embedding_params` use weight decay of 0, and we are using Muon. With a smaller batch size, we have more steps (18
+

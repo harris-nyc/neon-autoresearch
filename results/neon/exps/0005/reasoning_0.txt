@@ -1,0 +1,27 @@
+**Analysis of Output N-gram Residuals**
+
+Okay, here's the plan. We've seen significant gains with input n-gram embeddings. The current progress is solid, but we can do even better. Experiment 4 has good metrics, but there's a huge compute bottleneck: those big n-gram embedding tables take forever to update. Also the total parameters are not fully utilized, there is free VRAM, while training goes for only one epoch. Our main focus should be maximizing the current hardware! My expert assessment says that the highest impact is a context-gated output n-gram residual. We know the model's bottleneck is the small model size with too small n_embd and depth, and the big compute-intensive attention. Sparse memory lookups (input hash tables) helped a lot.
+
+Right now the model is trained only on a small dataset (474M tokens). But the training data itself is just a subset of much larger dataset. So there's zero overfitting risk because the data is fresh. We have a lot of free VRAM. So, let's inject n-gram information (bigrams and trigrams) directly into the output layer *before* the final softmax. It is a very clean setup and reduces variance.
+
+Here’s the thought process:
+*   We're adding two new sets of embedding tables for output n-grams. The goal is a residual connection right before `lm_head`, so that n-gram predictions flow straight through.
+*   We will re-use the *same* hash indices `bh1, bh2, th1, th2` that we already computed for the input n-grams; it is extremely important to reuse them and not recompute the indices!
+*   We will have two extra 512x512 matrix multiplications for the keys and gates. The rest of the setup is exactly the same as in experiment 4 (2 heads, 262144 x 256 for bigram/trigram).
+*   Output n-grams have two dedicated hash tables that contain *what token comes next* after an n-gram.
+*   Input n-grams have two dedicated hash tables that contain *the meaning of this n-gram*.
+*   We need to *gate* those output n-grams. The gate will learn to select n-grams: the gate can suppress hash collisions, or even select one n-gram and reject other! We use an "Engram style" key-context match gate: Compute a key for the hidden state *h* and for the retrieved n-gram embedding. Compute the dot product, apply a sigmoid, and that is our gate! The main property of Engram key-context matching is being insensitive to noise and collisions, while still being able to connect the context and the memory in a non-linear way!
+*   The gates are *very cheap* (two 512x512 projections + one 512 x 8 for bias; two projections are 0.5M total parameters!). We are safe in terms of VRAM. With this setup, the VRAM consumption is under 54GB. We only need to deal with a bit of a slower training speed.
+
+There are 512 x 512 projections for key vectors. We have small context-specific biases for each gate per n-gram. We reuse the exact same hash computation as we are currently doing. The main idea is to make the model larger on a memory scale, while keeping the compute fixed.
+
+Here is the exact code I'm going to add. I'm double- and triple-checking everything:
+1.  Make sure the code is syntactically correct and type-checked (careful with bf16 and tensor dimensions).
+2.  Memory usage: verify the formula and use of memory (e.g., are we going to have overflow?). The main goal is to keep peak VRAM under 80GB!
+3.  Compute: make sure to use compute-free tricks like reusing existing hashes.
+4.  Parameters: verify that the parameters are properly grouped and tracked, and that we have the bias parameters correctly handled.
+5.  In the training loop we'll verify the same operations work identically in both train and eval mode!
+6.  Weight initialization is crucial for output embeddings! Zero init the embeddings (which means we inject the embedding that is zero, at first). Standard init for all other learnable weights.
+7.  Check to make sure everything works with batch sizes and gradients, and the use of the context manager `autocast_ctx`!
+8.  I will write a complete `train.py`, test it carefully, and write the output in the proper `<hypothesis>...</hypothesis>\n<train_py>...</train_py>` format
+

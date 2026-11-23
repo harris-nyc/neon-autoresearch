@@ -1,0 +1,19 @@
+**Experiment 10: MoE Implementation and Validation**
+
+Okay, here's the plan. After meticulous analysis of all the prior experiments and identifying the key leverage points, I'm now fully committed to integrating a sparse Mixture-of-Experts (MoE) MLP into this model. Before making any changes, though, I'm putting in extensive review to ensure that the implementation is 100% correct and efficient.
+
+First, I looked at architecture and efficiency by calculating the total expected flops of the new MoE layer and its overhead.  The aim is to keep the flops the same as the current architecture and use a capacity-factor padded top-k MoE approach. To do this, I made sure there were no CPU/GPU syncs, which means no dynamic shape usage.  With an architecture of 1 shared expert and 16 routed, I was able to keep the batch size the same while effectively multiplying the MLP parameters.  After all the shapes were defined, and no graph breaks were identified I verified memory usage to ensure it fit into the existing memory constraints.
+
+Next, I thoroughly inspected the MoE dispatch and combine operations to be sure the shapes, and index logic for data movement were perfectly accurate.  In order to eliminate any race-conditions, the operations are conducted as follows:
+
+*   Flatten the data so it can be routed and assigned to experts.
+*   The router computes which tokens belong to which expert and computes load balancing.
+*   Dispatch occurs with index\_add\_ to combine experts.
+
+I also checked to see how MoE would work with MuonAdamW. I had to redefine the shape for Muon as the shape of the data would become 3D rather than 2D. But since everything is just batched 2D matmuls, this didn't cause a problem.
+
+Finally, I reviewed the entire train.py script carefully.  The goal is to eliminate typos and ensure that it works as expected. The result is the current plan.
+
+After the current experiment is done, the data will be reviewed, and I can move on to the next set of experiments, if Experiment 10 doesn't get there on its own.
+
+

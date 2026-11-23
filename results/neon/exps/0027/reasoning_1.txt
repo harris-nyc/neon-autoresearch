@@ -1,0 +1,17 @@
+**Collision-Optimal N-gram Architecture Summary**
+
+Okay, here's the game plan: I need to ensure a collision-optimal n-gram architecture, meticulously verifying all calculations to guarantee a bug-free implementation. The previous output had a problem, and I *must* deliver a complete and correct `<hypothesis>` and `<train_py>` this time. Let's do this right.
+
+First, I've got to confirm the architecture and parameter count. I'm aiming for roughly 1.61B parameters, similar to the incumbent.  I'm double-checking the n-gram breakdown: bigram, trigram, fourgram, and skip-bigram, calculating buckets and head dimensions to optimize for collision, and reduce random gather/scatter memory traffic. I'm focusing on increasing the number of buckets (2x to 4x) while keeping the overall parameter count identical. I need to make sure the math checks out, especially around gather/scatter elements per token, aiming for a significant reduction. Each table stores `[in_part | out_part]` contiguously per head!  I am also noting a potential advantage of the independent per-head key-match gating before projection.
+
+Next, I'll integrate the n-grams mid-network, after Block 1, to leverage the rich contextual information.  I'm reusing existing vectors to minimize extra embedding gathers/scatters and inserting an efficient, low-cost mid-layer with a key-match gating and a zero-initialized linear projection. The cost of this mid-layer injection should be minimal.
+
+I'm also exploring a nonlinear ReLU^2 output fusion MLP before the `lm_head`, aiming for a clean, fast way to combine the contextual representation and n-gram output. I've got to initialize the parameters carefully:  zero-init for `out_fuse_proj` to maintain a neutral starting point and allow the necessary gradient through the other layers.  I'm using Muon-optimized matrix groups to achieve fast orthogonalized learning.  I'm critically checking the `lr` scaling in Muon for each layer's parameter.
+
+The most important part is designing a single-pass compiled Chunked Fused `lm_head + softcap + cross_entropy` kernel. This needs to be bulletproof.  I need to make sure that a custom `torch.autograd.Function` within `torch.compile` doesn't cause any graph-breaking issues. I'm using `@torch._dynamo.disable` to avoid these problems and maximize speed. I'm analyzing the VRAM savings and speed improvements from chunking. I must verify the gradient math for each step, and double-check evaluation mode. I am tracing what happens with `@torch._dynamo.disable`, to get the results I'm expecting.
+
+I'm confirming that per-head key-match gating uses independent heads. I'm optimizing this structure with batched operations and `nn.ModuleList` of small linear layers.
+
+Finally, I am making a complete review of total parameter count and memory footprint, including the parameter allocation for all types and checking the BOS mask generation for all orders, to avoid bugs. I need to ensure all parameters are accounted for in the optimizer, and verify that the weight initialization strategy is applied consistently, and then check `estimate_flops` calculation.  Everything is accounted for, and I'm ready to move on.
+
+

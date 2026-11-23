@@ -1,0 +1,14 @@
+**Experiment 17: Deep Dive into Transformer Depth and Batch Size**
+
+Okay, so after digging deep into Experiment 16, I'm thinking we've got some serious performance headroom left, and I'm ready to pounce. Exp 16, while a win, still has some clear bottlenecks. Specifically, that 181ms per step time is killing me. And I'm seeing a ton of waste in the optimizer and the n-gram setup.
+
+My current train of thought is to go for the biggest, cleanest win first. It's time to test **scaling Transformer depth**. Everything else is staying the same, the point is to isolate the effect of depth. I'm going to set `DEPTH` to 12. And to make sure we have enough VRAM, I'll set `DEVICE_BATCH_SIZE` to 64 and use gradient accumulation to keep the effective batch size the same. This lets us evaluate pure architectural scaling with minimal noise.
+
+My reasoning? The dense transformer is tiny compared to the n-gram tables. Increasing depth from 8 to 12 layers should be a HUGE boost to its capacity and ability to do contextual reasoning, especially with the 1.61B n-gram params handling local memorization. Chinchilla scaling says a +50% increase in params (due to depth) for a 20% loss of tokens due to the fixed per-step overhead, is net positive. Deep is the way to go.
+Also, the current `window_pattern = "SSSL"` works great with `DEPTH = 12`. It’s all aligned.
+
+The only downsides are that the total number of tokens for the run decreases slightly, but it’s still more than enough tokens for the size and complexity of the model.
+
+If Exp 17 wins, we can then dive into other dimensions, like making the n-gram system faster and improving those HBM traffic bottlenecks.
+
+

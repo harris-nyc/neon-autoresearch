@@ -1,0 +1,29 @@
+**Experiment 3 Analysis and Next Steps: Deep Dive into N-gram Embeddings and Scaling**
+
+Alright, that Experiment 3 result was fantastic – a significant drop in validation bits per byte (val_bpb) with the 2-head bigram hash embedding table. Now, my mind is racing, as I need to figure out *why* it worked and what we can push further. Clearly, the small vocabulary size (8,192 tokens) is key, meaning the model is spending compute combining tokens, and memorizing frequent n-grams. The bigram hash embeddings are essentially free in terms of memory bandwidth compared to all the matrix multiplies in the transformer layers, and there's huge room to push this further.
+
+My immediate thoughts are, why limit this to just bigrams? We've got massive hash collisions given the token rate (3,700 hits per bucket, with 500 n-grams colliding!), but that's exactly what's letting us disambiguate with multi-head hash tables! The smaller vocabulary means we can add n-grams with 3 tokens (trigrams) and make big table (524K buckets!), without running out of RAM or having expensive AdamW updates, which will still be under 2.2 ms per step (an insignificant overhead). 
+
+We have to analyze how bigram embeddings and n-gram hash tables interact with the model:
+We should look at input n-gram embeddings, where we need to try trigrams as well as value embeddings.
+The critical aspect is how the bigram embedding is injected *before* the norms, and how it flows through every layer. Also, we could think about how a direct bigram-to-logits table *could* be huge! 
+
+I'm also critically considering the *learning rates* (LRs). In Exp 3, the bigram LR was a bit lower. Maybe it should be higher, and it's essential to understand how AdamW and sparse updates behave. The fact that rare buckets are updated at full learning rate because of AdamW's state decay could be super important.
+
+Further ahead:
+We need to consider multi-head hashing (concat vs sum) and the size of the embedding table, which is absolutely vital, and we need to check if there is overfitting (unlikely) due to the tokens / params ratio. Also, we need to think about multi-gram with trigrams. A multi-head approach with 2 bigram heads and 2 trigram heads can map into the n_embd embedding space and give the n-grams an opportunity to be in every layer! 
+
+Let's do this: 
+I'm also stepping back to consider the *entire* landscape. Experiment 3 is only a baseline, and we need to consider how to scale. The current model has low MFU at 38.9%. The model's narrow embedding dimension (n_embd = 512) is the bottleneck, with matmuls that are not compute-bound and lots of memory bottleneck (logits). We must widen the model (e.g., n_embd = 640 or 768), maybe even increasing depth! The sequence pattern also matters, and we have to think about U-Net skip connections, zero initialization for the attention output gate, and pre vs. sandwich norms, and weight tying.
+
+From an optimization standpoint, how do we adjust batch sizes to train with low-noise gradients from smaller batch sizes with larger effective gradients? Cosine schedules are useful, and weight decay is essential for stabilizing high-LR training. Also, training with smaller sequences early on is useful. We have a lot of variables to work on, like optimizer tweaks and a chunked cross-entropy.
+
+For the next experiment, let's build on Experiment 3's success:
+The highest-expected-value is to scale up the n-gram hash embeddings. We need to:
+1.  Increase bigram capacity from 131K to 524K
+2.  Add a **trigram** hash embedding (2-head), with 524K buckets, and summing them into the `wte` and `bigram` modules!
+3. Ensure no int64 overflow by using secure hash functions.
+
+This plan is clean, data-driven, and builds directly on our biggest win. Let's get it done!
+
+

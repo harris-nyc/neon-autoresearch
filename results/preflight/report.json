@@ -1,0 +1,30 @@
+{
+  "prepare_sha256": "5c6b45bcf2580c618a0427e53370810ffc339a6c2200c4396b4d01404550ed42",
+  "leakage": {
+    "pass": true,
+    "files": [],
+    "env_keys": [],
+    "network": false
+  },
+  "guard": {
+    "pass": true,
+    "status": "rejected"
+  },
+  "timeout": {
+    "pass": true,
+    "status": "timeout",
+    "wall_s": 15.0
+  },
+  "noise": {
+    "seeds": [
+      0.9959819952198904,
+      0.9934295753123127,
+      0.994988941737142,
+      0.9967237235995081,
+      0.9984564841859862
+    ],
+    "mean": 0.9959161440109678,
+    "std": 0.0018809955693777644,
+    "epsilon": 0.0018809955693777644
+  }
+}

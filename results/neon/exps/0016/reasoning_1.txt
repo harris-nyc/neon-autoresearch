@@ -1,0 +1,17 @@
+**Diagnosing and Fixing the `recompile_limit` Error in `adamw_step_fused`**
+
+Okay, here's the deal. I'm facing a `FailOnRecompileLimitHit` error specifically within the `adamw_step_fused` function. Dynamo is hitting its recompile limit (8 by default) because, with `dynamic=False` and `fullgraph=True`, it's generating a new compiled kernel for every unique tensor shape and data type combination passed to `adamw_step_fused`. Looking into my code, I see a slew of distinct shapes/dtypes in the `adamw` parameter groups – a total of 13! – which is clearly exceeding that default limit.
+
+To fix this, there are a few approaches I can use. Setting `torch._dynamo.config.cache_size_limit = 64` (or increasing `recompile_limit`) seems the cleanest short-term fix, allowing Dynamo to cache more kernels. This will cause additional compile time at startup, but should prevent the error and allows keeping static shapes.
+
+However, a better long-term approach might be to flatten the input tensors to `adamw_step_fused` using `.view(-1)`. Since it is operating elementwise, a single kernel for each data type (fp32 and bf16) would be sufficient if I also set `dynamic=True`. With `cache_size_limit = 64` and dynamic compilation of flattened inputs, I'd get the best of both worlds: zero recompilation errors and presumably minimal performance impact on the H100 (which I'll need to confirm through experimentation, of course).
+
+I'll check both methods for best results. If I use `torch._dynamo.config.cache_size_limit = 64` each of the 13 shapes compiles a specialized kernel (takes ~1-2s extra at startup, zero runtime overhead).
+
+Beyond the recompilation issue, I need to thoroughly check VRAM usage, given the massive number of parameters involved. The traceback shows a total of 1.66 billion parameters. Most of these are within the n-gram embeddings (bf16), which are going to consume a substantial chunk of memory. A quick calculation suggests roughly 12.88 GB for just the n-gram weights, gradients, and optimizer states. The dense model and activations will also contribute to VRAM usage, so I'll need to estimate the total consumption to ensure it fits comfortably within the H100's capacity. From baseline results, I believe this will fit.
+
+Finally, I need to verify that my forward pass, particularly the n-gram key masking and hashing, is free of any subtle bugs. I'll need to carefully step through the code to ensure that things work correctly after the BOS token.
+
+I'll output the corrected `train.py` in the specified format, ensuring that it adheres to all the harness rules, that it only uses supported imports, that I only load training data via the approved `make_dataloader`, and all the other constraints.
+
+

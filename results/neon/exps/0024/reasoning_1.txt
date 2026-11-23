@@ -1,0 +1,33 @@
+**My Thought Process: Exact N-gram Count Memory**
+
+Okay, here's what I'm thinking. This new Exact N-gram Count Memory (`ExactNGramTable`) idea is truly high-leverage and orthogonal to everything we've tried. Let's make sure it is mathematically sound.
+
+Firstly, the empirical observations make this approach incredibly promising. We're seeing diminishing returns on scaling transformer parameters, particularly because gradient-based hash tables consume a ton of VRAM due to the optimizer states. High-order n-grams are frequent enough in web text that an exact, empirical conditional distribution is actually really useful. We can leverage the frequency of n-grams (multi-token words, boilerplate etc.) to our advantage, and build this.
+
+This is where the exact fingerprint count table comes in. Zero optimizer states, zero gradients, and zero dense sweeps. We update a batch of 262,144 tokens by touching only 262K rows on the GPU, which takes only 1-2 ms. The 32-bit exact fingerprint reduces false-positive collisions to essentially zero ($\approx 2^{-32}$), meaning we avoid hallucinating.
+
+The memory table will store the top-K ($K=4$) next token candidates. It will store the counts and the total count per context. We are predicting a token `y_t` from context `c`.
+- Context length $L=2$ means it is a **trigram** (order 3).
+- Context length $L=3$ means it is a **4-gram** (order 4).
+- Context length $L=4$ means it is a **5-gram** (order 5).
+- Context length $L=5$ means it is a **6-gram** (order 6).
+- Context length $L=6$ means it is a **7-gram** (order 7).
+- Context length $L=7$ means it is an **8-gram** (order 8).
+
+Data consistency is essential. Since we're in Epoch 1, and we query the table during the forward pass and update *only after* the backward pass, there's zero self-leakage during training. In the evaluation phase we NEVER update the table. We only query it. Within-batch duplicates are also handled because updates are done post-backward.
+
+We have to consider the effect of table sparsity on the results. Early in training, the table is sparse (small counts). Later, especially during the warm-down phase (212M to 425M tokens), the table will approach the evaluation state.
+
+The mixture gate takes the log of `total_cnt` and `top_cnt / total_cnt` plus the Transformer's hidden state as input, meaning it learns to trust each order ($L \in \{3..8\}$) based on empirical count confidence and contextual uncertainty.
+
+We need to consider how to compute $P_{\text{mix}}(v \mid x)$ exactly, quickly, and differentiably. The neural model will produce logits, from which we can find $p_{nn}$. Then, for each order $m$ we lookup buckets.
+
+The calculation of probabilities and the math for exact mixture probability is as follows:
+- We have the count for each of the next K tokens.
+- We will smooth probabilities: $\hat{p}_{m,k} = \frac{n_{m,k}}{N_m + \alpha_m}$
+- Find probability mass: $S_m = \sum_{k=1}^K \hat{p}_{m,k} < 1$
+- The normalized mixture:
+  $$P_{\text{mix}}(v) = \underbrace{\left(w_{\text{nn}} + \sum_{m=0}^{M-1} w_m (1 - S_m)\right)}_{\lambda_{\text{nn}} \in (0, 1]} p_{\text{nn}}(v) + \sum_{m=0}^{M-1} w_m \sum_{k=1}^{K} \hat{p}_{m,k} \mathbf{1}[c_{m,k} = v]$$
+- We can check for normalization:
+  $$\sum_{v=0}^{V-1} P_{\text{mix}}(v) = \left(w_{\text{nn}} + \sum_m w_m (1 - S_m)\right) \underbrace{\sum_v p_{\text{nn}}(v)}_{=1} + \sum_m w_m \underbrace{\sum_{k: c_{m,k} \ge 0} \hat{p}_{m,k}}_{= S_m} = w_{\text{nn}} + \sum_m w_
+

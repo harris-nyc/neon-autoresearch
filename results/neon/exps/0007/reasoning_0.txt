@@ -1,0 +1,13 @@
+**Experiment 7: Deep Dive into N-gram Hash Embeddings**
+
+Okay, here's the plan. We're going to build on our success with n-gram hash embeddings.  Remember, Experiment 4 was our best so far, but we need to push beyond that. The goal is a bpb that is substantially lower than 0.9604, preferably hitting 0.9200.  We're going to focus on optimizing the n-gram hash architecture itself first, then we will isolate and check sparse/lazy adam, and finally context-gated memory injection.
+
+First, let's analyze and upgrade the n-gram hash tables. We're going to increase the number of orders to four: bigrams, trigrams, 4-grams, and skip-bigrams, each with a large number of buckets (2M per head to reduce collisions) and multiple hash heads (4), each with compact (64 dim, or 32 with a larger bucket count), projected linearly to the final embedding dimension. This approach offers several advantages: enhanced memory capacity, fewer collisions, and allows learning of more complex language patterns without a significant increase in computational overhead.   We are going to make it lean with 4 heads. Each n-gram order gets 256 or 512 dimensions. The key here is the projection layer (`ngram_proj`) that lets the n-gram information "speak" to all parts of the transformer. Because this is basically the most direct extension to our current state-of-the-art configuration, we will start here.
+
+Let's test all these upgrades without making any other changes to our model. We will keep the incumbent optimizer, AdamW.  Why? Because if we upgrade several things at once, we won't know if the upgrade succeeds or why it did.
+
+By making this upgrade and keeping the optimizer constant, we can understand the value of n-grams in isolation.  We will use an optimized hash function and check there's no cross-document leakage.  We'll also initialize our parameters correctly, ensure the right datatypes are used, and make sure we scale gradients, so it's a fair test.
+
+This is going to be a lot faster than exp 4 and will take up much less VRAM. This configuration should work because its forward and backward pass memory footprint and computational cost are very similar to Exp 4, BUT there's a big payoff here -- larger vocab size, more n-gram orders, smaller chance of bucket collisions, and, as a result, a high chance of a drop in val_bpb. Let's see if this n-gram architecture can get us significantly below 0.96.
+
+

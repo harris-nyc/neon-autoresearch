@@ -1,0 +1,21 @@
+**Analysis of CUDA Out-of-Memory Error and Solution**
+
+Okay, so I've been staring at this OOM error in `broken_train.py` and I think I've got it. The core issue is the massive memory footprint caused by adding the graph breaks. The original code has an impressive memory footprint thanks to `torch.compile`, which fuses the forward and backward passes. It recomputes or fuses key operations like `logits.float()`, `tanh`, and `cross_entropy`, and efficiently reuses or frees intermediate tensors across blocks.
+
+The issue arose when I disabled Dynamo's graph breaks with `@torch._dynamo.disable` around the attention layer. This creates several graph breaks at each attention layer (8 in total). This *stops* Inductor from fully fusing the backward pass, leading to extra saved tensors at each graph boundary! What's worse, the graph breaks causes the memory to explode.
+
+A key observation is that `loss.backward()` tries to allocate a huge 8.00 GiB tensor for gradients.  This is related to the `logits` tensor, the output of the language model's head, which at a batch size of 128 uses 8.00 GiB of fp32 memory. With all graph breaks, all 8.00 GiB of fp32 memory for this tensor is retained for the backward pass due to the graph breaks!
+
+With graph breaks, each forward subgraph saves *all* of its intermediate values: `q_flat`, `k_flat`, `v_flat`, `y.contiguous()`, and crucially `logits`. It also duplicates memory with `q.contiguous()`.
+
+The main culprit is the fragmentation created by graph breaks.  Each block *without* graph breaks, and with `torch.compile`, runs `flash_attn_func`, and the partitioning of the backward pass *recomputes* as much as possible, or frees the activations as soon as possible. But the graph breaks between each attention layer cause each subgraph to save all its inputs and outputs. And with graph breaks, those activations are NOT freed (even after the block), and we quickly run out of memory.
+
+There's also a trickier, secondary issue of a *data-dependent* shape.  The variable length `cu_seqlens` used by `FlashAttnVarlenFunc` requires shape of number of documents (128 for a batch). This means that every batch of variable number of documents means recompilation. Dynamo handles this as an exception, so we can't let it be compiled.
+
+Fixing this is twofold:
+1.  **Reduce Batch Size**:  The most *immediate* fix is to *halve* the device batch size from 128 to 64.  `DEVICE_BATCH_SIZE = 64` with `grad_accum_steps = 2` (keeping the same effective total batch size) reduces the memory usage for activations (such as `logits`) by 50%.
+2.  **Avoid Graph Breaks with Fixed `cu_seqlens`** We *need* the graph breaks on `_varlen_attn` because of the shape of `cu_seqlens`.
+    So there are 8 graph breaks, so the key is to set `DEVICE_BATCH_SIZE=64`. The memory savings are dramatic (from ~70 GiB to ~35 GiB, a huge safety margin.
+    With this fix in place, all the components of the graph (embedding, attention, mlp, lm_head, etc) will be compiled, and we will avoid having excessive number of tensors and copies when we run the backward pass.
+
+

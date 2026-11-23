@@ -1,0 +1,21 @@
+**Experiment Planning: First Steps to Victory**
+
+Okay, here's the plan. I'm looking at this problem, and I'm seeing a clear path to make some serious gains in the 5-minute window on this H100. Let's break down the baseline and identify the low-hanging fruit.
+
+First, the baseline...it's got potential, but it's a bit rigid. Depth 8, aspect ratio 64, giving us a 512 embedding size. 4 heads, vocab of 8192, a max sequence length of 2048 – nothing too crazy. Batch size is *massive* at 524,288 tokens, but we'll come back to this. 50M params total, the FLOPs/token calculation tells us there's room to optimize. It *should* be able to run for around ~1150 steps. But, with a big model, there are bottlenecks we can squeeze. 
+
+Now, let's dissect `train.py`. The batch size is the first thing screaming at me. 524,288 tokens per step is overkill for a 50M parameter model! With this time budget, we can get way more updates by dropping to 262,144 or even 131,072 and get more iterations with less noise. Fewer, larger gradients give us less noise and better convergence. We should double or quadruple the amount of optimizer steps in this 300 second run! This *has* to be the first experiment. Let's start with a change to 262,144 and see what happens.
+
+Then there's the model architecture. 4 heads in a 512 embedding, that's not optimal. The `HEAD_DIM = 128` setting may have been chosen for bigger models. We can try 8 heads by switching to `HEAD_DIM = 64`. FA3 loves the 64-dim attention! It is going to be faster! We could go deeper or wider, but for this experiment let's just tune the batch size and heads.
+
+The Value Embeddings are interesting. 16M params, a significant chunk of our total, but almost zero FLOP overhead. I could increase the value embedding count, but probably not for this first experiment.
+
+Now, let's dig into `train.py`. I want to see anything that might be suboptimal! The model optimizer uses Muon, and the `lm_head`, `wte`, and `value_embeds` all use `weight_decay = 0`. The value embeds and embeddings have their AdamW `exp_avg` and `exp_avg_sq` states in bfloat16, and the `adamw_step_fused` might be losing precision during the warmdown, we'll see if that's an issue later.
+
+Now, the data loading... the `make_dataloader` is creating CPU bottlenecks that's running Python best fit packing on the CPU, and that's not ideal. The `next(train_loader)` call is slow! It's calling tiktoken and Python iterations on 500 documents per microbatch. This can be significantly accelerated by putting the data loader in a separate background thread. If the training is CPU-bound, this has to be a win! For the first experiment, we'll probably not implement that, since we may want to see the pure batch size change.
+
+The main levers: We need to focus! Reduce batch size, tune heads, and make sure we have the correct LR. Batch size is the *first* target. Halving the batch size, that's almost guaranteed to improve things and get the biggest change.
+
+Let's test lowering the `TOTAL_BATCH_SIZE` to 262,144, sqrt-scale the LR, and see if it drops the bpb by 0.001881!
+
+

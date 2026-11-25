@@ -87,7 +87,7 @@ def main():
             raise SystemExit(f"baseline seed {s} failed ({r['status']}):\n{r['log_tail']}")
         vals.append(r["val_bpb"])
         print(f"baseline seed {42 + s}: val_bpb {r['val_bpb']:.6f}  (train {r['train_seconds']}s, "
-              f"peak VRAM {r['peak_vram_mb']} MB, total {r['wall_s']:.0f}s)", flush=True)
+              f"peak VRAM {r['peak_vram_mb']} MB, tokens {r.get('total_tokens_M')}M, total {r['wall_s']:.0f}s)", flush=True)
     eps = float(np.std(vals, ddof=1)) if len(vals) > 1 else 0.0
     noise = {"seeds": vals, "mean": float(np.mean(vals)), "std": eps, "epsilon": eps}
     json.dump(noise, open(os.path.join(PRE, "noise.json"), "w"), indent=2)

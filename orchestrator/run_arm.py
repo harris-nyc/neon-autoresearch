@@ -146,7 +146,7 @@ def main():
     os.environ.setdefault("TRITON_CACHE_DIR", os.path.join(ROOT, ".compile_cache", args.arm, "triton"))
 
     client = llm.make(args.provider, args.model, args.thinking, seed=sum(map(ord, args.arm)))
-    model_name = args.model or {"gemini": "gemini-4-neon", "anthropic": "claude-opus-5-5", "mock": "mock"}[args.provider]
+    model_name = args.model or llm.DEFAULT_MODEL[args.provider]
     baseline = open(sandbox.BASELINE).read()
     prefix = "\n\n".join([open(os.path.join(ROOT, "program.md")).read(),
                           CONTRACT.format(budget=sandbox.TIME_BUDGET, kill=sandbox.TIME_BUDGET + sandbox.GRACE_S, eps=args.epsilon),
@@ -155,7 +155,7 @@ def main():
 
     state = json.load(open(state_path)) if os.path.exists(state_path) else None
     common = {"arm": args.arm, "model": model_name,
-              "thinking_setting": args.thinking or llm.DEFAULT_REASONING[args.provider]}
+              "thinking_setting": args.thinking or llm.DEFAULT_REASONING.get(model_name, "default")}
 
     if state is None:  # experiment 0: baseline, seed 0, sets the incumbent
         t0 = time.time()

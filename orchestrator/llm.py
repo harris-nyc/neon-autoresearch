@@ -178,4 +178,6 @@ def parse(text):
 
 
 # What "provider default" resolves to, for logs and the dashboard.
-DEFAULT_REASONING = {"gemini": "default (high)", "anthropic": "default (medium)", "mock": "default"}
+DEFAULT_REASONING = {"gemini-4-neon": "default (high)", "claude-opus-5-5": "default (medium)",
+                     "claude-fable-5-2": "default (high)", "mock": "default"}
+DEFAULT_MODEL = {"gemini": "gemini-4-neon", "anthropic": "claude-opus-5-5", "mock": "mock"}

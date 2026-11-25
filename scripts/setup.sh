@@ -8,5 +8,5 @@ export PATH="$HOME/.local/bin:$PATH"
 nvidia-smi --query-gpu=name,memory.total --format=csv
 uv sync
 uv run python -m orchestrator.data_setup
-mkdir -p runs && uv run python -m orchestrator.preflight --seeds 5 2>&1 | tee runs/preflight.txt
+mkdir -p runs && uv run python -m orchestrator.preflight --seeds ${SEEDS:-5} 2>&1 | tee runs/preflight.txt
 echo; echo "===== SETUP DONE: paste everything from 'leakage test' down to Claude ====="

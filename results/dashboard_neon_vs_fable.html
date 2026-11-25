@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>neon-autoresearch · overnight run</title>
+<style>
+  :root {
+    --bg: #0D1117; --panel: #151B23; --panel2: #1B222C; --line: #262E39; --grid: #212833;
+    --ink: #E8EDF3; --ink2: #A3AEBB; --muted: #6E7A88; --good: #3FB27F; --bad: #E5534B;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+    --sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); }
+  body { padding: 28px 32px 40px; max-width: 1440px; margin: 0 auto; }
+  .banner { background: repeating-linear-gradient(135deg, #3a2a10 0 12px, #2e220e 12px 24px); border: 1px solid #6b4e1c;
+            color: #F2C46D; font: 600 13px var(--mono); padding: 8px 14px; border-radius: 8px; margin-bottom: 18px; letter-spacing: .02em; }
+  header h1 { font-size: 34px; line-height: 1.1; margin: 0 0 8px; letter-spacing: -0.02em; font-weight: 750; }
+  header .sub { color: var(--ink2); font-size: 15px; }
+  header .sub b { color: var(--ink); font-weight: 600; }
+  .vs { display: inline-flex; gap: 10px; align-items: center; margin-top: 14px; font: 600 14px var(--mono); }
+  .chip { display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+  .controls { display: flex; align-items: center; gap: 14px; margin: 24px 0 18px; flex-wrap: wrap; }
+  button, .seg button { font: 600 13px var(--sans); color: var(--ink); background: var(--panel2); border: 1px solid var(--line);
+                        border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+  button:hover { border-color: #3a4554; }
+  #play { background: var(--ink); color: var(--bg); border-color: var(--ink); min-width: 104px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; background: transparent; color: var(--ink2); padding: 8px 12px; }
+  .seg button.on { background: var(--panel2); color: var(--ink); }
+  input[type=range] { flex: 1; min-width: 160px; accent-color: var(--ink); }
+  .clock { font: 700 22px var(--mono); min-width: 190px; text-align: right; font-variant-numeric: tabular-nums; }
+  .clock small { color: var(--muted); font-weight: 500; font-size: 14px; }
+
+  .board { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-bottom: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; position: relative; overflow: hidden; }
+  .card .stripe { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
+  .card .who { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .card .who b { font-size: 18px; }
+  .card .who span { color: var(--muted); font: 12px var(--mono); }
+  .card .big { display: flex; align-items: baseline; gap: 12px; margin: 10px 0 12px; }
+  .card .big .v { font: 750 44px var(--mono); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+  .card .big .g { font: 700 16px var(--mono); }
+  .card .big .lab { color: var(--muted); font-size: 12px; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 12px; }
+  .stats div { font: 600 16px var(--mono); font-variant-numeric: tabular-nums; }
+  .stats div small { display: block; color: var(--muted); font: 500 11px var(--sans); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2px; }
+  .card.pulse { animation: pulse 1.1s ease-out; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 var(--pc); } 100% { box-shadow: 0 0 0 18px transparent; } }
+
+  .main { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 14px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink2); margin: 0 0 10px; font-weight: 650;
+              display: flex; justify-content: space-between; align-items: center; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; color: var(--ink2); font-size: 12px; margin: 2px 0 6px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  svg text { font-family: var(--mono); }
+  #chart { width: 100%; height: auto; display: block; }
+  .tip { position: fixed; pointer-events: none; background: #0B0F14; border: 1px solid #39424f; border-radius: 10px; padding: 10px 12px;
+         font-size: 13px; max-width: 340px; box-shadow: 0 8px 24px rgba(0,0,0,.45); display: none; z-index: 10; line-height: 1.4; }
+  .tip .h { font: 600 12px var(--mono); color: var(--ink2); margin-bottom: 4px; }
+
+  #feed { list-style: none; margin: 0; padding: 0; overflow-y: auto; max-height: 520px; }
+  #feed li { border-left: 3px solid; background: var(--panel2); border-radius: 8px; padding: 9px 11px; margin-bottom: 8px; animation: in .35s ease-out; }
+  #feed li.discard, #feed li.crash, #feed li.timeout { opacity: .62; }
+  #feed .top { display: flex; justify-content: space-between; font: 600 11px var(--mono); color: var(--ink2); margin-bottom: 4px; gap: 8px; }
+  #feed .hyp { font-size: 13.5px; line-height: 1.35; }
+  .pill { font: 700 10px var(--mono); padding: 2px 7px; border-radius: 999px; text-transform: uppercase; letter-spacing: .06em; }
+  .pill.keep { background: rgba(63,178,127,.16); color: #69d3a1; }
+  .pill.discard { background: #262d37; color: var(--ink2); }
+  .pill.crash, .pill.timeout, .pill.rejected { background: rgba(229,83,75,.15); color: #f08a84; }
+  .pill.baseline { background: #262d37; color: var(--ink); }
+  @keyframes in { from { opacity: 0; transform: translateY(-6px); } }
+
+  table { width: 100%; border-collapse: collapse; font: 14px var(--mono); font-variant-numeric: tabular-nums; }
+  th { text-align: left; color: var(--muted); font: 600 11px var(--sans); text-transform: uppercase; letter-spacing: .06em; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 10px; border-bottom: 1px solid var(--grid); }
+  .final { margin-top: 14px; }
+  footer { color: var(--muted); font-size: 12px; margin-top: 22px; line-height: 1.6; }
+  @media (max-width: 900px) {
+    body { padding: 18px 14px 30px; } header h1 { font-size: 26px; }
+    .main { grid-template-columns: 1fr; } th:nth-child(5), td:nth-child(5), th:nth-child(6), td:nth-child(6) { display: none; } table { font-size: 12.5px; } td, th { padding: 8px 6px; } .card .big .v { font-size: 36px; } .clock { min-width: 0; text-align: left; }
+  }
+</style>
+</head>
+<body>
+<div id="banner" class="banner" hidden></div>
+<header>
+  <h1 id="title"></h1>
+  <div class="sub" id="sub"></div>
+  <div class="vs" id="vs"></div>
+</header>
+
+<div class="controls">
+  <button id="play">▶ Replay</button>
+  <div class="seg" id="speed"><button data-s="10">10s</button><button data-s="20" class="on">20s</button><button data-s="40">40s</button></div>
+  <input type="range" id="scrub" min="0" max="1000" value="1000" aria-label="time">
+  <div class="seg" id="xmode"><button data-m="t" class="on">Hours</button><button data-m="id">Experiment #</button><button data-m="cum">$ spent</button></div>
+  <div class="clock" id="clock"></div>
+</div>
+
+<section class="board" id="board"></section>
+
+<section class="main">
+  <div class="panel">
+    <h2><span>Best val_bpb so far · lower is better ↓</span><span id="ylab" style="color:var(--muted);text-transform:none;letter-spacing:0"></span></h2>
+    <div class="legend" id="legend"></div>
+    <svg id="chart" viewBox="0 0 900 430" role="img" aria-label="race chart"></svg>
+  </div>
+  <div class="panel">
+    <h2><span>Ideas, as they were tried</span>
+      <span class="seg" id="feedmode"><button data-f="all" class="on">All</button><button data-f="keep">Kept</button></span></h2>
+    <ul id="feed"></ul>
+  </div>
+</section>
+
+<section class="panel final" id="final" hidden>
+  <h2><span>Held-out test shard (never seen during the night) · retrained from scratch, mean ± std over seeds</span></h2>
+  <div style="overflow-x:auto"><table id="ftable"></table></div>
+</section>
+
+<footer id="foot"></footer>
+<div class="tip" id="tip"></div>
+
+<script>
+const D = {"title": "Gemini 4 Neon vs Claude Fable 5.2", "hours": 10.3, "noise": null, "final": null, "dataset": "?", "gpu": "?", "test_run": true, "arms": [{"id": "neon", "label": "Gemini 4 Neon", "color": "#3D8BF2", "model": "gemini-4-neon", "thinking": "default (high)", "rows": [{"id": 0, "t": 0.09781917572021484, "status": "baseline", "score": 0.995943531340795, "delta": 0.0, "hyp": "baseline (Karpathy's train.py)", "cost": 0, "cum": 0, "train_s": 300.0, "lat": null, "fix": 0, "think": 0, "out": 0}, {"id": 1, "t": 0.28650000000000003, "status": "keep", "score": 0.9870684007129669, "delta": -0.008875130627828187, "hyp": "Halve TOTAL_BATCH_SIZE from 2**19 (524K) to 2**18 (262K) with ~0.75x scaled LRs so the 50M model takes 2x as many optimizer steps in the 5-minute budget, moving closer to the critical batch size.", "cost": 0.36545, "cum": 0.36545, "train_s": 300.1, "lat": 160.1, "fix": 0, "think": 10417, "out": 9169}, {"id": 2, "t": 0.4722777777777778, "status": "discard", "score": 0.9854934263748528, "delta": -0.0015749743381140435, "hyp": "Halve TOTAL_BATCH_SIZE again from 2**18 (262K) to 2**17 (131K) with DEVICE_BATCH_SIZE=64 and ~0.75x scaled LRs to double optimizer steps (~3600 steps) and test whether we are still above the critical batch size for this 50M model.", "cost": 0.32965, "cum": 0.6951, "train_s": 300.0, "lat": 139.07, "fix": 0, "think": 7175, "out": 9178}, {"id": 3, "t": 0.6626944444444444, "status": "keep", "score": 0.9692703561971321, "delta": -0.017798044515834777, "hyp": "Add a 2-head bigram hash embedding table (2 x 131072 x n_embd/2, BOS-masked) summed into token embeddings before RMSNorm to give the 8K-vocab model high-capacity bigram lookup at near-zero FLOP cost.", "cost": 0.62391, "cum": 1.31901, "train_s": 300.1, "lat": 281.57, "fix": 0, "think": 26116, "out": 9842}, {"id": 4, "t": 0.8582222222222222, "status": "keep", "score": 0.9604009933407525, "delta": -0.008869362856379626, "hyp": "Scale bigram hash tables 4x to 524,288 buckets per head and add 2-head BOS-masked trigram hash embeddings (2 x 524,288 x n_embd/2) summed into token embeddings to reduce bigram hash collisions and give the 8K-vocab model high-capacity 3-gram lookup at minimal FLOP/step overhead.", "cost": 0.42278, "cum": 1.74179, "train_s": 300.1, "lat": 193.8, "fix": 0, "think": 11861, "out": 10523}, {"id": 5, "t": 1.0465555555555555, "status": "discard", "score": 0.9585534502686257, "delta": -0.001847543072126756, "hyp": "Add dedicated context-gated output bigram and trigram hash embeddings (reusing the already-computed hashes) injected directly after final RMSNorm before lm_head via 8-group context + Engram-style key-match gating, giving direct next-token n-gram logit residuals while filtering hash collisions.", "cost": 0.56159, "cum": 2.30339, "train_s": 300.2, "lat": 279.11, "fix": 0, "think": 19190, "out": 12294}, {"id": 6, "t": 1.2535555555555555, "status": "discard", "score": 1.0251331587567136, "delta": 0.06473216541596116, "hyp": "Scale model width from 512 to 768 (ASPECT_RATIO=96, 6 heads of head_dim=128, ~57M transformer matrix params) with DEVICE_BATCH_SIZE=64 (grad_accum_steps=2, same TOTAL_BATCH_SIZE=2**18) to boost H100 Tensor Core MFU and double dense transformer capacity while keeping 1.5x richer n-gram embeddings.", "cost": 0.77843, "cum": 3.08181, "train_s": 300.1, "lat": 388.43, "fix": 0, "think": 35372, "out": 10549}, {"id": 7, "t": 1.45675, "status": "discard", "score": 0.9591023534013192, "delta": -0.0012986399394332437, "hyp": "Upgrade input n-gram hash embeddings to 4 orders (bigram, trigram, 4-gram, skip-bigram) with exact 64-bit bijective keys, 4 independent hash heads x 1,048,576 buckets x 64 dim per order (2x buckets, 2x heads, 1.07B params total, same per-token gather/scatter bandwidth) projected into n_embd via a le", "cost": 0.72608, "cum": 3.80789, "train_s": 300.0, "lat": 384.45, "fix": 0, "think": 31420, "out": 11002}, {"id": 8, "t": 1.6736944444444446, "status": "discard", "score": 0.9676030964508898, "delta": 0.007202103110137359, "hyp": "Upgrade the 8-layer Transformer architecture with 3 synergistic improvements: (1) HEAD_DIM=64 (8 heads instead of 4) for 2x attention pattern diversity at equal matmul FLOPs, (2) elementwise Gated Attention (SDPA sigmoid output gate before c_proj, NeurIPS 2025) to eliminate attention sinks and add v", "cost": 0.79284, "cum": 4.60073, "train_s": 300.2, "lat": 418.56, "fix": 0, "think": 35608, "out": 11222}, {"id": 9, "t": 1.9941944444444446, "status": "discard", "score": 0.9673082798377537, "delta": 0.00690728649700123, "hyp": "Add BOS-masked, zero-transpose Canon layers (4-tap residual causal depthwise convs before Attention and MLP, optimized with AdamW) and full lower-triangular layer-to-layer residual mixing (generalizing resid/x0 lambdas, U-Net skips, and final layer aggregation) to give every layer continuous multi-t", "cost": 0.82559, "cum": 5.42631, "train_s": 300.1, "lat": 447.72, "fix": 0, "think": 37258, "out": 11733}, {"id": 10, "t": 2.2026666666666666, "status": "discard", "score": 1.0802182892627394, "delta": 0.11981729592198698, "hyp": "Replace the dense 4x MLP with a DeepSeek-style Fine-Grained Sparse MoE (1 shared expert of dim 1024 + 16 routed experts of dim 512, top-2 routing, auxiliary-loss-free bias load balancing, static-shape batched matmuls with zero CPU-GPU syncs) to multiply MLP parameter capacity 4.5x (16.8M -> 75.5M) a", "cost": 0.69894, "cum": 6.12525, "train_s": 300.9, "lat": 373.0, "fix": 0, "think": 28323, "out": 12205}, {"id": 11, "t": 2.546138888888889, "status": "discard", "score": 0.962459002563431, "delta": 0.002058009222678514, "hyp": "Eliminate the three main wall-clock bottlenecks with zero mathematical change \u2014 (1) async background-thread dataloader prefetching on a dedicated CUDA stream to hide CPU best-fit packing/tokenization stalls, (2) chunked fused lm_head + softcap + cross-entropy (4096-token chunks) to eliminate 17GB fp", "cost": 0.96749, "cum": 7.09275, "train_s": 300.1, "lat": 535.97, "fix": 0, "think": 46463, "out": 11966}, {"id": 12, "t": 2.8596666666666666, "status": "discard", "score": 0.9640178024346394, "delta": 0.0036168090938869524, "hyp": "Add an exact full-rank bigram transition logit table (8192x8192, fp32 master weights, bf16 lookup, bypassing the rank-512 lm_head bottleneck) together with a 4x-leaner context+key-match gated output bigram/trigram residual (4x524Kx64 -> 256 -> 512 before lm_head, reusing input hashes) to give direct", "cost": 0.93177, "cum": 8.02452, "train_s": 300.2, "lat": 463.13, "fix": 0, "think": 43872, "out": 12132}, {"id": 13, "t": 3.1683333333333334, "status": "discard", "score": 0.959710933160428, "delta": -0.0006900601803244699, "hyp": "Combine (1) a chunked fused lm_head + softcap + cross-entropy autograd kernel (4096-token chunks) to eliminate ~50GB/step of fp32 logit HBM traffic and boost training throughput/tokens in 300s, with (2) a leaner, higher-resolution multi-order input n-gram bank (1M-bucket bigram/trigram + 524K 4-gram", "cost": 0.96346, "cum": 8.98798, "train_s": 300.1, "lat": 488.24, "fix": 0, "think": 44498, "out": 13593}, {"id": 14, "t": 3.484972222222222, "status": "discard", "score": 0.9593059591412962, "delta": -0.001095034199456224, "hyp": "Add a fast, hardware-aligned 4-order Context-Gated Output N-gram Head (bigram, trigram, 4-gram, skip-bigram packed into one 8x524Kx64 table = 268M params, 2x leaner than Exp 5) injected after final RMSNorm before lm_head with per-order block-diagonal smooth key-match + context gating (32 groups) and", "cost": 0.92119, "cum": 9.90917, "train_s": 300.1, "lat": 464.68, "fix": 0, "think": 42630, "out": 12618}, {"id": 15, "t": 3.685861111111111, "status": "discard", "score": 0.960158918396928, "delta": -0.00024207494382444406, "hyp": "Replace dense bf16 AdamW on the 537M-param bigram/trigram hash tables with fp32 Lazy Empirical-Bayes Adam (updating only rows with non-zero gradient, per-row step counts for exact bias2, no bias1 division to shrink 1-occurrence n-grams by 1-beta1^count, and NGRAM_LR=0.30) to eliminate the 5.6x zero-", "cost": 0.7693, "cum": 10.67848, "train_s": 300.0, "lat": 380.33, "fix": 0, "think": 33835, "out": 11262}, {"id": 16, "t": 4.004194444444445, "status": "keep", "score": 0.9573130407529439, "delta": -0.0030879525878085845, "hyp": "Upgrade n-gram memory to a hardware-fused 4-order Input+Output architecture (bigram, trigram, 1M-bucket 4-gram, skip-bigram) packing input and output vectors into the same embedding rows (halving random gathers/scatters) with exact 52-bit bijective keys, BOS boundary masking, and 16-group context + ", "cost": 1.32606, "cum": 12.00453, "train_s": 300.1, "lat": 545.51, "fix": 1, "think": 46788, "out": 26290}, {"id": 17, "t": 4.220777777777777, "status": "discard", "score": 0.967553147614042, "delta": 0.010240106861098108, "hyp": "Scale Transformer depth by 50% from DEPTH=8 to DEPTH=12 while keeping MODEL_DIM=512 fixed (with DEVICE_BATCH_SIZE=64, grad_accum_steps=2 for safe VRAM) to substantially increase dense contextual reasoning capacity at only ~25% higher step time, since ~45% of step latency is fixed n-gram/lm_head over", "cost": 0.7796, "cum": 12.78413, "train_s": 300.2, "lat": 406.01, "fix": 0, "think": 32069, "out": 13139}, {"id": 18, "t": 4.538972222222222, "status": "discard", "score": 0.9704072386881032, "delta": 0.013094197935159313, "hyp": "Upgrade n-gram memory to a 4.30B-param 5-order system (2x buckets across bigram/trigram/4-gram/skip, 2x 4-gram dim, new 2M-bucket 5-gram order) with strict per-head independent key-match collision gating, enabled at equal step speed and lower peak VRAM via direction-preserving Row-wise FP32-variance", "cost": 1.0384, "cum": 13.82253, "train_s": 300.1, "lat": 549.0, "fix": 0, "think": 46296, "out": 16158}, {"id": 19, "t": 4.858388888888889, "status": "discard", "score": 0.9593796515801257, "delta": 0.0020666108271818473, "hyp": "Upgrade n-gram memory to a collision-optimal 3.22B-param 5-order system (2x bigram buckets 1M, 4x trigram buckets 2M x 256, 2x 4-gram 2M x 128, 2x skip-bigram 1M x 128, new 5-gram 2M x 64) with packed 2-head tables (halving embedding/AdamW kernel launches, 23% less gather/scatter traffic), strict pe", "cost": 1.03219, "cum": 14.85472, "train_s": 300.1, "lat": 561.0, "fix": 0, "think": 48709, "out": 13290}, {"id": 20, "t": 5.180916666666667, "status": "discard", "score": 0.9613974504050279, "delta": 0.004084409652084009, "hyp": "Break the rank-512 softmax bottleneck and enable mid-network reasoning over collision-filtered n-gram memory by (1) adding a dedicated ngram_lm_head fused with lm_head into a single 1024->8192 unembedding GEMM (2x output rank, decoupling contextual vs n-gram logit subspaces at zero extra logit HBM t", "cost": 0.89747, "cum": 15.75219, "train_s": 300.2, "lat": 475.7, "fix": 0, "think": 38587, "out": 14402}, {"id": 21, "t": 5.49425, "status": "discard", "score": 0.9659090382924002, "delta": 0.00859599753945628, "hyp": "Apply Empirical-Bayes AdamW regularization to the 1.61B sparse n-gram hash embeddings (NGRAM_EPS=3e-6, NGRAM_BETAS=(0.5, 0.98), NGRAM_LR=0.25) so 1-occurrence singletons (|grad|~6e-7 << eps) are shrunk ~15x instead of coasting 5x to \u00b10.92 and poisoning colliding hash buckets, while frequent n-grams ", "cost": 0.99561, "cum": 16.7478, "train_s": 300.0, "lat": 539.65, "fix": 0, "think": 46217, "out": 13292}, {"id": 22, "t": 5.92836111111111, "status": "discard", "score": 0.9907078155093167, "delta": 0.03339477475637287, "hyp": "Eliminate cross-document attention leakage and positional misalignment on packed BOS-aligned sequences using fa3.flash_attn_varlen_func with per-document RoPE position resets (also accelerating attention via shorter per-document spans), combined with neutral-init learnable per-head QK-norm scales an", "cost": 1.40759, "cum": 18.15539, "train_s": 300.3, "lat": 644.56, "fix": 1, "think": 48955, "out": 28130}, {"id": 23, "t": 6.252222222222223, "status": "discard", "score": 0.9572828621880786, "delta": -3.0178564865313007e-05, "hyp": "Upgrade the 8-layer Transformer backbone with four zero-FLOP modded-nanogpt architectural improvements: (1) learnable per-head QK-norm temperature scales (init 1.35) to eliminate the Cauchy-Schwarz sqrt(128) attention dilution cap in 2048-token context, (2) 50% Partial RoPE (64 rotated + 64 NoPE dim", "cost": 0.98125, "cum": 19.13664, "train_s": 300.1, "lat": 495.88, "fix": 0, "think": 44454, "out": 14069}, {"id": 24, "t": 6.587694444444445, "status": "discard", "score": 0.9842901559399498, "delta": 0.026977115187005962, "hyp": "(no valid response)", "cost": 1.71463, "cum": 20.85128, "train_s": 300.1, "lat": 833.52, "fix": 1, "think": 70188, "out": 29966}, {"id": 25, "t": 6.902666666666666, "status": "discard", "score": 0.9626493565929167, "delta": 0.005336315839972849, "hyp": "Combine a single-pass compiled Chunked Fused lm_head + softcap + cross_entropy kernel (eliminating ~38GB VRAM and ~50GB/step of fp32 logit HBM traffic) with halving TOTAL_BATCH_SIZE from 2**18 to 2**17 (DEVICE_BATCH_SIZE=64, ~0.80x scaled LRs) to ~double optimizer steps (~1065 -> ~2100) while preser", "cost": 1.06696, "cum": 21.91824, "train_s": 300.1, "lat": 504.24, "fix": 0, "think": 49810, "out": 14457}, {"id": 26, "t": 7.215472222222222, "status": "discard", "score": 0.9596150428951445, "delta": 0.0023020021422006653, "hyp": "(no valid response)", "cost": 1.55402, "cum": 23.47226, "train_s": 300.1, "lat": 748.98, "fix": 1, "think": 62933, "out": 26446}, {"id": 27, "t": 7.541611111111111, "status": "discard", "score": 0.9612280743012954, "delta": 0.003915033548351543, "hyp": "(no valid response)", "cost": 1.53997, "cum": 25.01222, "train_s": 300.1, "lat": 789.62, "fix": 1, "think": 67808, "out": 20621}, {"id": 28, "t": 7.8780277777777785, "status": "discard", "score": 0.9591099262637215, "delta": 0.0017968855107776127, "hyp": "(no valid response)", "cost": 1.69729, "cum": 26.70952, "train_s": 300.1, "lat": 831.36, "fix": 1, "think": 72933, "out": 25956}, {"id": 29, "t": 8.314194444444444, "status": "discard", "score": 0.9610622348978919, "delta": 0.0037491941449480093, "hyp": "(no valid response)", "cost": 2.05261, "cum": 28.76213, "train_s": 300.0, "lat": 924.74, "fix": 2, "think": 75384, "out": 37266}, {"id": 30, "t": 8.630638888888889, "status": "discard", "score": 0.9872963725184433, "delta": 0.029983331765499388, "hyp": "Eliminate the two major training throughput and VRAM bottlenecks with exact mathematical equivalence: (1) a compiled Chunked Fused lm_head + softcap + cross-entropy autograd kernel (16K-token chunks, saving 1MB logsumexp so neither forward nor backward ever materializes fp32 logits in HBM, cutting ~", "cost": 1.03207, "cum": 29.79419, "train_s": 300.2, "lat": 475.23, "fix": 0, "think": 47007, "out": 14800}, {"id": 31, "t": 8.943527777777778, "status": "discard", "score": 0.9647640834772819, "delta": 0.007451042724338053, "hyp": "Replace unchunked fp32 lm_head + softcap + cross_entropy with a startup-verified compiled ChunkedSoftcapCrossEntropy autograd kernel (4096-token chunks, fused Triton softmax/dtanh with zero fp32 logits materialized in HBM) to cut ~25 GB VRAM and ~50+ ms/step with exact mathematical equivalence, deli", "cost": 0.94812, "cum": 30.74231, "train_s": 300.1, "lat": 436.93, "fix": 0, "think": 40898, "out": 15292}, {"id": 32, "t": 9.135194444444444, "status": "discard", "score": 0.9583360640702763, "delta": 0.0010230233173323944, "hyp": "Replace unchunked fp32 lm_head + softcap + cross-entropy with exact PyTorch-autograd detach-and-chunk over 32 chunks (8192 tokens/chunk, compiled forward_features + compiled lm_head_ce_chunk, startup-verified) to cut ~25 GB peak VRAM and ~70ms/step with zero custom-backward bugs, delivering ~35% mor", "cost": 0.82311, "cum": 31.56542, "train_s": 300.0, "lat": 350.29, "fix": 0, "think": 33461, "out": 14373}, {"id": 33, "t": 9.457416666666665, "status": "discard", "score": 0.9606653300080559, "delta": 0.0033522892551119954, "hyp": "(no valid response)", "cost": 1.58236, "cum": 33.14778, "train_s": 300.1, "lat": 764.21, "fix": 1, "think": 60480, "out": 30584}, {"id": 34, "t": 9.767416666666666, "status": "discard", "score": 0.9752037490005419, "delta": 0.017890708247597975, "hyp": "Introduce a 3-stage Batch Size Warmup schedule (65K for 0-15%, 131K for 15-45%, 262K for 45-100% of the time budget using fixed DEVICE_BATCH_SIZE=32 with grad_accum 1/2/4 and matched LR/WD scaling) to deliver ~70% more optimizer steps during the high-SNR early phase while preserving low-variance 262", "cost": 0.9539, "cum": 34.10168, "train_s": 300.1, "lat": 486.22, "fix": 0, "think": 43123, "out": 13399}, {"id": 35, "t": 10.084861111111111, "status": "discard", "score": 0.9816873798519905, "delta": 0.024374339099046627, "hyp": "Add Meta Memory+ Gated Product Key Memory layers (4 heads x 512x512 = 1.05M semantic slots/layer, top-4 exact product-key routing with RMSNorm Q/K and SiLU input gating, 268M value params total) in parallel with MLP at layers 3 and 6 to give the 25M-backbone Transformer high-capacity context-address", "cost": 0.96391, "cum": 35.06558, "train_s": 300.2, "lat": 501.77, "fix": 0, "think": 41714, "out": 15368}]}, {"id": "fable", "label": "Claude Fable 5.2", "color": "#D9712F", "model": "claude-fable-5-2", "thinking": "default (high)", "rows": [{"id": 0, "t": 0.09786073313819038, "status": "baseline", "score": 0.9960178680746257, "delta": 0.0, "hyp": "baseline (Karpathy's train.py)", "cost": 0, "cum": 0, "train_s": 300.3, "lat": null, "fix": 0, "think": 0, "out": 0}, {"id": 1, "t": 0.28650000000000003, "status": "keep", "score": 0.9872651982249397, "delta": -0.008752669849685923, "hyp": "Halve TOTAL_BATCH_SIZE from 2**19 to 2**18 (grad accumulation 2 -> 1) so the fixed 5-minute budget yields about twice as many optimizer steps; at this short horizon the run is step-limited, so more updates should lower val_bpb more than the noisier gradients hurt.", "cost": 0.78583, "cum": 0.78583, "train_s": 300.0, "lat": 82.6, "fix": 0, "think": 0, "out": 0}, {"id": 2, "t": 0.47827777777777775, "status": "discard", "score": 0.990919127230498, "delta": 0.0036539290055582763, "hyp": "Halve the batch again (TOTAL_BATCH_SIZE 2**18 -> 2**17, DEVICE_BATCH_SIZE 128 -> 64) to get about 3700 optimizer steps instead of about 1870 in the same 5 minutes; experiment 1 showed the run is still step-limited, so more updates should again outweigh the noisier gradients.", "cost": 0.83171, "cum": 1.61753, "train_s": 300.1, "lat": 86.15, "fix": 0, "think": 0, "out": 0}, {"id": 3, "t": 0.6713055555555555, "status": "discard", "score": 0.9864689560985195, "delta": -0.0007962421264202657, "hyp": "Increase depth from 8 to 9 while holding width at 512 (ASPECT_RATIO 64 -> 56, so 9*56=504 rounds up to 512): batch 2**18 looks like the right step count (2**17 was worse), so I spend about 11% of the steps on an extra layer, which I expect to add more capacity per token than the lost updates cost.", "cost": 0.85562, "cum": 2.47315, "train_s": 300.1, "lat": 92.49, "fix": 0, "think": 0, "out": 0}, {"id": 4, "t": 0.8599444444444445, "status": "keep", "score": 0.9850175106838139, "delta": -0.002247687541125809, "hyp": "Shrink the short attention window from 1/2 to 1/8 of context (1024 -> 256 tokens) in the six \"S\" layers, keeping the two full-context \"L\" layers: attention is a large share of compute at width 512, so cheaper local layers should give more optimizer steps in 5 minutes at little modelling cost, since ", "cost": 0.86061, "cum": 3.33376, "train_s": 300.1, "lat": 93.38, "fix": 0, "think": 0, "out": 0}, {"id": 5, "t": 1.0498611111111111, "status": "keep", "score": 0.981621151650621, "delta": -0.0033963590331929083, "hyp": "Retry depth 9 at width 512 (ASPECT_RATIO 64 -> 56) now that short-window layers are cheap, with WINDOW_PATTERN \"SSSSL\" so there are still only two full-context layers (4 and 8) and the added layer is a 256-token one. Experiment 3 was a near-miss (-0.0008) when the extra layer cost more steps; at rou", "cost": 0.90536, "cum": 4.23912, "train_s": 300.0, "lat": 105.82, "fix": 0, "think": 0, "out": 0}, {"id": 6, "t": 1.2428611111111112, "status": "discard", "score": 0.9837499449325451, "delta": 0.0021287932819240574, "hyp": "Increase depth from 9 to 10 at width 512 (ASPECT_RATIO 56 -> 51, so 10*51=510 rounds up to 512), keeping WINDOW_PATTERN \"SSSSL\" so there are still only two full-context layers (4 and 9) and the added layer is a cheap 256-token one. Experiment 5 gained 0.0034 from a layer added this way, so I expect ", "cost": 0.84853, "cum": 5.08765, "train_s": 300.1, "lat": 88.66, "fix": 0, "think": 0, "out": 0}, {"id": 7, "t": 1.4381944444444446, "status": "discard", "score": 0.9845550538361221, "delta": 0.002933902185501047, "hyp": "Halve HEAD_DIM from 128 to 64 so the width-512 model has 8 attention heads instead of 4, at the same parameter count and nearly the same compute. Four heads is few for a model with only two full-context layers, so I expect more distinct attention patterns per layer to lower val_bpb with little or no", "cost": 0.86254, "cum": 5.95019, "train_s": 300.1, "lat": 91.95, "fix": 0, "think": 0, "out": 0}, {"id": 8, "t": 1.626222222222222, "status": "discard", "score": 0.9802894418059451, "delta": -0.001331709844675899, "hyp": "Lengthen the LR decay from the last 50% to the last 75% of the run (WARMDOWN_RATIO 0.5 -> 0.75) and end at 5% of peak LR instead of 0 (FINAL_LR_FRAC 0.0 -> 0.05). With only about 1740 noisy steps at batch 2**18, I expect more time annealing at lower LR to lower val_bpb, and the nonzero floor keeps t", "cost": 0.85391, "cum": 6.8041, "train_s": 300.2, "lat": 88.85, "fix": 0, "think": 0, "out": 0}, {"id": 9, "t": 1.8122222222222222, "status": "discard", "score": 0.9806435836118597, "delta": -0.0009775680387613672, "hyp": "Re-apply experiment 8's near-miss schedule (WARMDOWN_RATIO 0.5 -> 0.75, FINAL_LR_FRAC 0.0 -> 0.05) and raise MATRIX_LR from 0.04 to 0.05. The longer decay cut the time-averaged Muon LR from about 0.030 to about 0.026, so a higher peak restores the average (about 0.033) while keeping the long anneal,", "cost": 0.91216, "cum": 7.71627, "train_s": 300.0, "lat": 105.83, "fix": 0, "think": 0, "out": 0}, {"id": 10, "t": 1.9985833333333332, "status": "discard", "score": 0.980928435483961, "delta": -0.0006927161666600012, "hyp": "Re-apply the schedule from experiments 8 and 9 (WARMDOWN_RATIO 0.5 -> 0.75, FINAL_LR_FRAC 0.0 -> 0.05), which measured about -0.001 both times, and also shrink the init of the block input matrices (c_q, c_k, c_v, c_fc) to 0.68x. Because Muon's step size does not depend on weight scale, a smaller ini", "cost": 1.18983, "cum": 8.9061, "train_s": 300.1, "lat": 183.35, "fix": 0, "think": 0, "out": 0}, {"id": 11, "t": 2.1905555555555556, "status": "keep", "score": 0.9663698966495188, "delta": -0.015251255001102249, "hyp": "Add a zero-initialised hashed bigram embedding (2**18 buckets indexed by a hash of the previous and current token) to the token embedding before the first norm. With an 8K vocab the previous token says a lot about the current sub-word, so giving every layer this for the cost of one lookup should fre", "cost": 1.55567, "cum": 10.46177, "train_s": 300.0, "lat": 288.98, "fix": 0, "think": 0, "out": 0}, {"id": 12, "t": 2.3842222222222222, "status": "keep", "score": 0.9631210417684313, "delta": -0.003248854881087504, "hyp": "Add a second zero-initialised hashed embedding for trigrams (2**19 buckets indexed by a hash of the two previous tokens and the current one), summed with the token and bigram embeddings before the first norm. The bigram table gave -0.015 by handing every layer local sub-word context for free, so I e", "cost": 0.91228, "cum": 11.37405, "train_s": 300.1, "lat": 99.41, "fix": 0, "think": 0, "out": 0}, {"id": 13, "t": 2.579944444444444, "status": "keep", "score": 0.96086569616887, "delta": -0.002255345599561309, "hyp": "Add a causal \"copy\" feature: for each position, find the most recent earlier position in the same row with the same (prev, cur) bigram via a sort, and add a zero-initialised embedding of the token that followed it (reserved row when there is no match) to the input sum. This gives every layer exact l", "cost": 1.79434, "cum": 13.16839, "train_s": 300.1, "lat": 352.9, "fix": 0, "think": 0, "out": 0}, {"id": 14, "t": 2.884888888888889, "status": "discard", "score": 0.9675555815582159, "delta": 0.006689885389345895, "hyp": "Extend the copy feature in two ways: compute copy candidates for unigram, bigram and trigram matches (token that followed the most recent earlier occurrence of the current 1/2/3-gram), each with its own zero-init input embedding, and add a gated pointer at the output where three extra lm_head rows p", "cost": 2.46849, "cum": 15.63688, "train_s": 300.0, "lat": 326.81, "fix": 1, "think": 0, "out": 0}, {"id": 15, "t": 3.0723055555555554, "status": "discard", "score": 0.959690600062151, "delta": -0.0011750961067189536, "hyp": "Give the hashed bigram/trigram tables their own, 3x lower Adam LR (0.6 -> 0.2; wte and copy embedding stay at 0.6), and re-apply the near-miss schedule from experiments 8-10 (WARMDOWN_RATIO 0.5 -> 0.75, FINAL_LR_FRAC 0.0 -> 0.05, about -0.001 each time). Hash buckets are hit sparsely, and with dense", "cost": 1.56428, "cum": 17.20116, "train_s": 300.1, "lat": 275.97, "fix": 0, "think": 0, "out": 0}, {"id": 16, "t": 3.372527777777778, "status": "keep", "score": 0.9569408341931367, "delta": -0.003924861975733274, "hyp": "Enlarge the hashed n-gram tables 4x (bigram 2**18 -> 2**20 buckets, trigram 2**19 -> 2**21) and re-apply the near-miss schedule (WARMDOWN_RATIO 0.5 -> 0.75, FINAL_LR_FRAC 0.0 -> 0.05, about -0.001 in each of four runs). With far more medium-frequency n-grams than buckets, most of them currently shar", "cost": 2.09031, "cum": 19.29147, "train_s": 300.1, "lat": 438.05, "fix": 0, "think": 0, "out": 0}, {"id": 17, "t": 3.5653611111111108, "status": "discard", "score": 0.9569408980901616, "delta": 6.38970248934001e-08, "hyp": "Trade embedding width for buckets in the hashed n-gram tables at the same parameter count and VRAM: bigram 512-dim x 2**20 -> 256-dim x 2**21, trigram 512-dim x 2**21 -> 128-dim x 2**23, each zero-padded into its own slice of the residual stream. Experiment 16 showed the tables are collision-limited", "cost": 1.52394, "cum": 20.81541, "train_s": 300.2, "lat": 263.91, "fix": 0, "think": 0, "out": 0}, {"id": 18, "t": 3.7574722222222223, "status": "discard", "score": 0.9571762116638002, "delta": 0.00023537747066348924, "hyp": "Reshape the trigram table from 512-dim x 2**21 buckets to 128-dim x 2**23 buckets (same parameter count) and add a hashed 4-gram table (128-dim x 2**22 buckets, about +4GB VRAM), both zero-initialised and zero-padded into separate slices of the residual stream. Experiment 16 showed the tables are co", "cost": 1.71958, "cum": 22.53499, "train_s": 300.0, "lat": 321.29, "fix": 0, "think": 0, "out": 0}, {"id": 19, "t": 4.172055555555556, "status": "discard", "score": 0.9582652917254851, "delta": 0.0013244575323484442, "hyp": "(no valid response)", "cost": 4.19913, "cum": 26.73412, "train_s": 300.0, "lat": 875.04, "fix": 1, "think": 0, "out": 0}, {"id": 20, "t": 4.482777777777778, "status": "keep", "score": 0.9510658094583196, "delta": -0.005875024734817047, "hyp": "Add a corpus-wide \"follower memory\": non-gradient hash tables (int32, 2**28 buckets each, signature-checked) that store, for every 3-, 5- and 8-token context seen in training, the token that most recently followed it. Each batch is looked up before it is written, and the tables are frozen at eval. T", "cost": 2.26784, "cum": 29.00196, "train_s": 300.2, "lat": 471.87, "fix": 0, "think": 0, "out": 0}, {"id": 21, "t": 4.785083333333333, "status": "discard", "score": 0.9552599468089067, "delta": 0.004194137350587046, "hyp": "Add a gated pointer at the output: a zero-initialised linear head on the final hidden state produces one scalar per retrieved candidate (the in-row copy token and the three follower-memory tokens), and each scalar is scatter-added to that candidate's logit before the softcap, masked when there is no", "cost": 2.91494, "cum": 31.9169, "train_s": 300.1, "lat": 430.37, "fix": 1, "think": 0, "out": 0}, {"id": 22, "t": 4.983333333333333, "status": "discard", "score": 0.9495229795835373, "delta": -0.001542829874782381, "hyp": "Turn the follower memory from one \"most recent follower\" per context into several samples for the low orders: order 3 gets 4 slots and order 5 gets 2 (order 8 stays at 1), each step writing to slot step % n_slots and lookups reading all slots and summing their embeddings. Short contexts have ambiguo", "cost": 1.56227, "cum": 33.47918, "train_s": 300.1, "lat": 261.04, "fix": 0, "think": 0, "out": 0}, {"id": 23, "t": 5.184611111111111, "status": "discard", "score": 0.9530764347772251, "delta": 0.0020106253189055012, "hyp": "Turn each follower-memory entry from \"most recent follower\" into a Boyer-Moore majority tracker with a 3-bit saturating vote counter packed in the same int32 (signature 15 bits, confidence 3, token 13). The table then holds roughly the most frequent follower of each 3-/5-/8-token context plus how co", "cost": 1.91414, "cum": 35.39332, "train_s": 300.2, "lat": 368.64, "fix": 0, "think": 0, "out": 0}, {"id": 24, "t": 5.377527777777777, "status": "keep", "score": 0.9487838187993705, "delta": -0.0022819906589491845, "hyp": "Enlarge the follower-memory tables for the long contexts (order 5: 2**28 -> 2**30 buckets, order 8: 2**28 -> 2**30; order 3 stays 2**28, about +6GB VRAM). The last log shows fill of 0.69 and 0.77 from about 418M writes, so I estimate roughly half of the stored 5- and 8-token contexts are overwritten", "cost": 1.25715, "cum": 36.65046, "train_s": 300.1, "lat": 171.78, "fix": 0, "think": 0, "out": 0}, {"id": 25, "t": 5.57675, "status": "discard", "score": 0.9503841911399362, "delta": 0.0016003723405657588, "hyp": "Add a causal \"run-length confidence\" to the retrieval features: for each source (in-row copy, follower memory orders 3/5/8) count how many consecutive previous predictions were correct (pred[t-1] == idx[t]), bucket into 4 levels (0, 1-2, 3-7, 8+), and index each candidate embedding by (level, token)", "cost": 1.42535, "cum": 38.07581, "train_s": 300.1, "lat": 214.91, "fix": 0, "think": 0, "out": 0}, {"id": 26, "t": 5.995416666666666, "status": "discard", "score": 0.9490695503205149, "delta": 0.0002857315211444167, "hyp": "(no valid response)", "cost": 4.05919, "cum": 42.135, "train_s": 300.0, "lat": 815.83, "fix": 1, "think": 0, "out": 0}, {"id": 27, "t": 6.4447222222222225, "status": "discard", "score": 0.949322264118987, "delta": 0.000538445319616554, "hyp": "Enrich the follower memory with several samples per context and one more backoff level: order 3 keeps 4 recent followers, orders 4 (new) and 5 keep 2, order 8 keeps 1, written to slot step % n_slots and read by summing the slot embeddings. Repeated candidates then add up as votes, giving a rough fol", "cost": 4.35874, "cum": 46.49374, "train_s": 300.1, "lat": 819.12, "fix": 1, "think": 0, "out": 0}, {"id": 28, "t": 6.643916666666667, "status": "discard", "score": 0.953160203776883, "delta": 0.004376384977512582, "hyp": "Batch-size schedule via gradient accumulation: use DEVICE_BATCH_SIZE 64 with one micro-batch per optimizer step (2**17 tokens) for the first third of the time budget, then two micro-batches (2**18 tokens, as now) for the rest. Early training at peak LR is step-limited rather than noise-limited, so a", "cost": 1.66603, "cum": 48.15977, "train_s": 300.1, "lat": 291.82, "fix": 0, "think": 0, "out": 0}, {"id": 29, "t": 6.949194444444444, "status": "discard", "score": 1.0279884132891033, "delta": 0.07920459448973283, "hyp": "Feed the follower memory twice as much data at almost no GPU cost: the train loader now yields 256 rows per step, the model trains on the first 128 as before, and all 256 are written to the memory tables after the forward pass (the extra 128 rows are never looked up, so lookup-before-write still hol", "cost": 2.1883, "cum": 50.34807, "train_s": 300.1, "lat": 434.39, "fix": 0, "think": 0, "out": 0}, {"id": 30, "t": 7.149166666666667, "status": "discard", "score": 0.949392346375909, "delta": 0.000608527576538509, "hyp": "Add a causal document-level bag-of-words feature: a zero-initialised embedding table is cumulatively averaged over all tokens since the last BOS (one cumsum plus a gather to reset at document starts) and added to the input sum. Only layers 4 and 8 see beyond 256 tokens, so handing every layer the do", "cost": 1.72634, "cum": 52.07441, "train_s": 300.1, "lat": 308.33, "fix": 0, "think": 0, "out": 0}, {"id": 31, "t": 7.596333333333333, "status": "discard", "score": 0.9492840015155201, "delta": 0.0005001827161495997, "hyp": "(no valid response)", "cost": 5.50184, "cum": 57.57624, "train_s": 300.2, "lat": 1254.99, "fix": 1, "think": 0, "out": 0}, {"id": 32, "t": 7.9261944444444445, "status": "discard", "score": 0.9476935768767825, "delta": -0.0010902419225879978, "hyp": "Add a learnable per-head attention temperature: multiply the RMS-normed queries by a per-layer, per-head scalar initialised at 1.35 (Adam, same LR as resid_lambdas). With QK-norm and head_dim 128 the attention logit is capped at sqrt(128)=11.3, which limits how sharply a head can pick one token out ", "cost": 2.80343, "cum": 60.37967, "train_s": 300.1, "lat": 633.43, "fix": 0, "think": 0, "out": 0}, {"id": 33, "t": 8.29575, "status": "discard", "score": 0.9477204370561542, "delta": -0.0010633817432162962, "hyp": "Extend the in-row copy feature from one bigram match to three context lengths (1, 2 and 4 tokens: the token that followed the most recent earlier occurrence of the current k-gram in the row, each with its own zero-init input embedding block, no output pointer), and re-apply experiment 32's near-miss", "cost": 3.04612, "cum": 63.42579, "train_s": 300.0, "lat": 638.83, "fix": 1, "think": 0, "out": 0}, {"id": 34, "t": 8.71675, "status": "discard", "score": 0.9469716480552838, "delta": -0.001812170744086683, "hyp": "Combine two independent near-misses: (a) follower memory keeps several recent followers for short contexts (order 3: 4 slots, order 5: 2 slots, order 8: 1; written to slot step % n_slots, read by summing slot embeddings so repeats act as votes; per-slot tables shrunk so VRAM rises only ~1GB), which ", "cost": 2.62125, "cum": 66.04704, "train_s": 300.2, "lat": 896.31, "fix": 0, "think": 0, "out": 0}, {"id": 35, "t": 9.052611111111112, "status": "discard", "score": 0.9472617330937254, "delta": -0.0015220857056450487, "hyp": "(no valid response)", "cost": 4.18178, "cum": 70.22882, "train_s": 300.0, "lat": 850.35, "fix": 1, "think": 0, "out": 0}]}], "built": "2026-11-24 16:14"};
+const $ = s => document.querySelector(s);
+const fmt = (v, d = 4) => v == null ? "–" : v.toFixed(d);
+const money = v => "$" + (v < 10 ? v.toFixed(2) : v.toFixed(1));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+
+// ---------- static header ----------
+$("#title").textContent = D.title;
+$("#sub").innerHTML = `Karpathy's <b>autoresearch</b>: the model edits one file (<b>train.py</b>, a small GPT), each experiment trains for <b>5 min</b> on one ` +
+  `${esc(D.gpu)}, and it's scored by validation bits-per-byte (<b>lower = better</b>). The harness keeps or discards every change. No human in the loop.`;
+$("#vs").innerHTML = D.arms.map(a => `<span class="chip"><span class="dot" style="background:${a.color}"></span>${esc(a.label)}` +
+  `<span style="color:var(--muted);font-weight:500">${esc(a.thinking)}</span></span>`).join('<span style="color:var(--muted)">vs</span>');
+if (D.test_run) { const b = $("#banner"); b.hidden = false;
+  b.textContent = "TEST RUN · stand-in model on synthetic data · these numbers are not real results"; }
+
+// baseline + noise band
+const base0 = D.arms.map(a => a.rows.find(r => r.status === "baseline")).filter(Boolean)[0];
+const BASE = base0 ? base0.score : (D.noise ? D.noise.mean : 0);
+const EPS = D.noise ? D.noise.epsilon : 0;
+
+// derived per-arm series
+for (const a of D.arms) {
+  let best = null;
+  a.rows.forEach(r => { if (r.status === "baseline" || r.status === "keep") best = r.score; r.best = best; });
+}
+const allRows = D.arms.flatMap(a => a.rows);
+const Tmax = Math.max(...allRows.map(r => r.t), 1e-6);
+const scores = allRows.map(r => r.score).filter(v => v != null);
+const bests = allRows.map(r => r.best).filter(v => v != null);
+
+// ---------- state ----------
+let T = Tmax, xmode = "t", feedmode = "all", playing = false, dur = 20, lastFrame = 0, shownIds = new Set(), prevKeeps = {};
+
+function visible(a) { return a.rows.filter(r => r.t <= T + 1e-9); }
+
+// ---------- scoreboard ----------
+function median(xs) { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2; }
+function renderBoard() {
+  $("#board").innerHTML = D.arms.map(a => {
+    const v = visible(a), exps = v.filter(r => r.status !== "baseline");
+    const keeps = exps.filter(r => r.status === "keep").length;
+    const crashes = exps.filter(r => ["crash", "timeout", "rejected"].includes(r.status)).length;
+    const best = v.length ? v[v.length - 1].best : null;
+    const gain = best != null && BASE ? (1 - best / BASE) * 100 : null;  // lower is better
+    const spent = v.length ? v[v.length - 1].cum : 0;
+    const lat = median(exps.map(r => r.lat).filter(x => x != null));
+    const think = exps.reduce((s, r) => s + r.think, 0);
+    return `<div class="card" id="card-${a.id}" style="--pc:${a.color}66"><div class="stripe" style="background:${a.color}"></div>
+      <div class="who"><b>${esc(a.label)}</b><span>${esc(a.model)} · ${esc(a.thinking)}</span></div>
+      <div class="big"><span class="v">${fmt(best)}</span>
+        <span><span class="g" style="color:${gain > 0 ? "var(--good)" : "var(--ink2)"}">${gain == null ? "" : (gain >= 0 ? "+" : "") + gain.toFixed(1) + "%"}</span><br>
+        <span class="lab">best val_bpb · better than Karpathy's baseline</span></span></div>
+      <div class="stats">
+        <div><small>Experiments</small>${exps.length}</div>
+        <div><small>Kept</small>${keeps}</div>
+        <div><small>Crashed</small>${crashes}</div>
+        <div><small>Spent</small>${money(spent)}</div>
+        <div><small>$ / kept idea</small>${keeps ? money(spent / keeps) : "–"}</div>
+        <div><small>${think ? "Thinking tok" : "Median LLM s"}</small>${think ? (think / 1000).toFixed(0) + "k" : (lat == null ? "–" : lat.toFixed(0))}</div>
+      </div></div>`;
+  }).join("");
+}
+
+// ---------- chart ----------
+let W = 900, H = 430, M = { l: 62, r: 150, t: 14, b: 40 };
+function xval(r) { return xmode === "t" ? r.t : xmode === "id" ? r.id : r.cum; }
+function niceTicks(lo, hi, n) {
+  const span = hi - lo || 1, step0 = span / n, mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => span / s <= n) || mag * 10;
+  const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-12; v += step) out.push(+v.toFixed(10)); return out;
+}
+function renderChart() {
+  W = Math.round(Math.min(900, Math.max(320, $("#chart").parentElement.clientWidth - 36)));
+  const narrow = W < 600; H = narrow ? 300 : 430; M = { l: narrow ? 46 : 62, r: narrow ? 92 : 150, t: 14, b: 36 };
+  $("#chart").setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const xmax = xmode === "t" ? Math.max(D.hours, Tmax) : Math.max(...allRows.map(xval), 1);
+  // domain from the best-so-far lines + baseline band; worse experiments beyond it are pinned to the top edge
+  const ylo0 = Math.min(BASE - 1.3 * EPS, ...bests), yhi0 = Math.max(BASE + 1.3 * EPS, ...bests);
+  const span0 = (yhi0 - ylo0) || Math.abs(BASE) * 0.01 || 0.001;
+  const ylo = ylo0 - span0 * 0.08, yhi = yhi0 + span0 * 0.9;
+  const X = v => M.l + (v / xmax) * (W - M.l - M.r);
+  const Y = v => M.t + (1 - (v - ylo) / (yhi - ylo)) * (H - M.t - M.b);
+  let s = "";
+  // grid + y ticks
+  const yt = niceTicks(ylo, yhi, 5), ydp = Math.max(2, Math.min(5, -Math.floor(Math.log10((yt[1] - yt[0]) || 1e-3)) + 1));
+  for (const v of yt) s += `<line x1="${M.l}" x2="${W - M.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/>` +
+      `<text x="${M.l - 10}" y="${Y(v) + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${v.toFixed(ydp)}</text>`;
+  for (const v of niceTicks(0, xmax, W < 600 ? 4 : 8)) s += `<text x="${X(v)}" y="${H - M.b + 20}" text-anchor="middle" font-size="11" fill="var(--muted)">${xmode === "cum" ? "$" + v : xmode === "t" ? v + "h" : v}</text>`;
+  s += `<line x1="${M.l}" x2="${W - M.r}" y1="${H - M.b}" y2="${H - M.b}" stroke="var(--line)"/>`;
+  // noise band + baseline
+  if (EPS) s += `<rect x="${M.l}" width="${W - M.l - M.r}" y="${Y(BASE + EPS)}" height="${Y(BASE - EPS) - Y(BASE + EPS)}" fill="#ffffff" opacity="0.045"/>`;
+  s += `<line x1="${M.l}" x2="${W - M.r}" y1="${Y(BASE)}" y2="${Y(BASE)}" stroke="var(--ink2)" stroke-dasharray="4 5" opacity=".7"/>` +
+       `<text x="${M.l + 8}" y="${Y(BASE) - 8}" font-size="11" fill="var(--ink2)">Karpathy's baseline${EPS ? " (band = ±1 seed std)" : ""}</text>`;
+  // now-line in hours mode
+  if (xmode === "t" && T < Tmax) s += `<line x1="${X(T)}" x2="${X(T)}" y1="${M.t}" y2="${H - M.b}" stroke="var(--ink)" opacity=".25"/>`;
+  const ends = [];
+  for (const a of D.arms) {
+    const v = visible(a); if (!v.length) continue;
+    // all experiment dots (behind)
+    for (const r of v) {
+      if (r.status === "baseline") continue;
+      const x = X(xval(r));
+      if (r.score == null) { s += `<path d="M${x - 4},${M.t + 2} l8,8 m0,-8 l-8,8" stroke="${a.color}" stroke-width="1.6" opacity=".7" data-a="${a.id}" data-i="${r.id}" class="hit"/>`; continue; }
+      const off = r.score > yhi, y = off ? M.t + 16 : Y(r.score);
+      if (r.status === "keep") continue;
+      s += off ? `<path d="M${x - 4},${y + 3} l8,0 l-4,-6z" fill="${a.color}" opacity=".45"/>` : `<circle cx="${x}" cy="${y}" r="3.2" fill="${a.color}" opacity=".35"/>`;
+    }
+    // best-so-far step line
+    let d = "", px = null, py = null;
+    for (const r of v) {
+      if (r.best == null) continue;
+      const x = X(xval(r)), y = Y(r.best);
+      if (px == null) d = `M${x},${y}`; else d += ` H${x} V${y}`;
+      px = x; py = y;
+    }
+    const xEnd = xmode === "t" ? X(Math.min(T, Tmax)) : px;
+    d += ` H${xEnd}`;
+    s += `<path d="${d}" fill="none" stroke="${a.color}" stroke-width="2.5" stroke-linejoin="round"/>`;
+    // kept markers on top
+    for (const r of v.filter(r => r.status === "keep"))
+      s += `<circle cx="${X(xval(r))}" cy="${Y(r.score)}" r="6" fill="${a.color}" stroke="var(--panel)" stroke-width="2"/>`;
+    ends.push({ a, x: xEnd, y: py, v: v[v.length - 1].best });
+  }
+  // direct labels at line ends, de-collided
+  ends.sort((p, q) => p.y - q.y);
+  for (let i = 1; i < ends.length; i++) { const prev = ends[i - 1].ly || ends[i - 1].y; if ((ends[i].ly || ends[i].y) - prev < 36) ends[i].ly = prev + 36; }
+  for (const e of ends) { const ly = e.ly || e.y;
+    s += `<circle cx="${e.x}" cy="${e.y}" r="4.5" fill="${e.a.color}"/>` +
+         `<text x="${e.x + 12}" y="${ly - 2}" font-size="12.5" font-weight="700" fill="var(--ink)">${esc(e.a.label)}</text>` +
+         `<text x="${e.x + 12}" y="${ly + 13}" font-size="12" fill="var(--ink2)">${fmt(e.v)}</text>`; }
+  // hover targets
+  for (const a of D.arms) for (const r of visible(a)) {
+    if (r.status === "baseline") continue;
+    const y = r.score == null ? M.t + 6 : (r.score > yhi ? M.t + 16 : Y(r.score));
+    s += `<circle cx="${X(xval(r))}" cy="${y}" r="10" fill="transparent" class="hit" data-a="${a.id}" data-i="${r.id}"/>`;
+  }
+  $("#chart").innerHTML = s;
+  $("#ylab").textContent = `x: ${xmode === "t" ? "hours of wall-clock" : xmode === "id" ? "experiment number" : "API $ spent"} · dots = every experiment, big = kept, ▲ = much worse`;
+}
+$("#legend").innerHTML = D.arms.map(a => `<span><span class="dot" style="background:${a.color}"></span>${esc(a.label)}</span>`).join("") +
+  `<span><svg width="22" height="8"><line x1="0" x2="22" y1="4" y2="4" stroke="#A3AEBB" stroke-dasharray="4 4"/></svg>baseline</span>` +
+  `<span><svg width="10" height="10"><path d="M1,1 l8,8 m0,-8 l-8,8" stroke="#A3AEBB" stroke-width="1.6"/></svg>crashed</span>`;
+
+// tooltip
+const tip = $("#tip");
+$("#chart").addEventListener("mousemove", e => {
+  const t = e.target.closest(".hit"); if (!t) { tip.style.display = "none"; return; }
+  const a = D.arms.find(a => a.id === t.dataset.a), r = a.rows.find(r => r.id === +t.dataset.i);
+  tip.innerHTML = `<div class="h"><span class="dot" style="background:${a.color}"></span> ${esc(a.label)} · #${r.id} · <span class="pill ${r.status}">${r.status}</span></div>` +
+    `${esc(r.hyp)}<div class="h" style="margin-top:6px">val_bpb ${fmt(r.score)} · Δ ${r.delta == null ? "–" : (r.delta >= 0 ? "+" : "") + r.delta.toFixed(4)} · ${money(r.cost)} · hour ${r.t.toFixed(2)}</div>`;
+  tip.style.display = "block";
+  tip.style.left = Math.min(e.clientX + 14, innerWidth - 360) + "px"; tip.style.top = e.clientY + 14 + "px";
+});
+$("#chart").addEventListener("mouseleave", () => tip.style.display = "none");
+
+// ---------- feed ----------
+function feedRows() {
+  return D.arms.flatMap(a => visible(a).filter(r => r.status !== "baseline").map(r => ({ a, r })))
+    .filter(x => feedmode === "all" || x.r.status === "keep").sort((p, q) => q.r.t - p.r.t);
+}
+function li({ a, r }) {
+  const delta = r.delta == null ? "" : `<span style="color:${r.status === "keep" ? "#69d3a1" : "var(--muted)"}">${(r.delta >= 0 ? "+" : "") + r.delta.toFixed(4)}</span>`;
+  return `<li class="${r.status}" style="border-color:${a.color}" data-k="${a.id}:${r.id}"><div class="top"><span>${esc(a.label)} · #${r.id} · ${r.t.toFixed(1)}h</span>` +
+    `<span>${delta} <span class="pill ${r.status}">${r.status === "keep" ? "kept" : r.status}</span></span></div><div class="hyp">${esc(r.hyp)}</div></li>`;
+}
+function renderFeed(full) {
+  const rows = feedRows(), ul = $("#feed");
+  if (full) { ul.innerHTML = rows.slice(0, 80).map(li).join(""); shownIds = new Set(rows.map(x => x.a.id + ":" + x.r.id)); return; }
+  const fresh = rows.filter(x => !shownIds.has(x.a.id + ":" + x.r.id)).reverse();
+  for (const x of fresh) { ul.insertAdjacentHTML("afterbegin", li(x)); shownIds.add(x.a.id + ":" + x.r.id); }
+  while (ul.children.length > 80) ul.lastChild.remove();
+}
+
+// ---------- final table ----------
+if (D.final) {
+  $("#final").hidden = false;
+  const names = ["baseline", ...D.arms.map(a => a.id)];
+  const lab = id => id === "baseline" ? "Karpathy's baseline" : D.arms.find(a => a.id === id).label;
+  const pm = m => m ? `${m.mean.toFixed(4)} <span style="color:var(--muted)">± ${m.std.toFixed(4)}</span>` : "–";
+  $("#ftable").innerHTML = `<tr><th>Model</th><th>Test bpb (lower = better)</th><th>Better than baseline</th><th>Real? (&gt; 2× seed noise)</th><th>Best val bpb</th><th>Experiments</th></tr>` +
+    names.filter(n => D.final[n]).map(n => { const f = D.final[n];
+      return `<tr><td>${esc(lab(n))}</td><td>${pm(f.test_bpb)}</td>` +
+        `<td>${f.test_gain_pct == null ? "–" : (f.test_gain_pct >= 0 ? "+" : "") + f.test_gain_pct.toFixed(2) + "%"}</td>` +
+        `<td>${n === "baseline" ? "–" : f.beats_2x_seed_std ? "✓ yes" : "✗ no"}</td>` +
+        `<td>${f.best_val_bpb == null ? "–" : f.best_val_bpb.toFixed(4)}</td><td>${f.experiments ?? "–"}</td></tr>`; }).join("");
+}
+$("#foot").innerHTML = `Built on Karpathy's autoresearch (MIT). Same instructions, GPU type and limits for every model; each runs at its own default reasoning setting. ` +
+  `The held-out test shard is invisible during the night; every train.py is checked before it runs; scores come from Karpathy's fixed evaluate_bpb. ` +
+  `Harness built with Claude Opus 5.5, which is also the comparison model. Built ${esc(D.built)}.`;
+
+// ---------- clock / replay ----------
+function renderClock() {
+  $("#clock").innerHTML = `Hour ${T.toFixed(1)} <small>/ ${Math.max(D.hours, Tmax).toFixed(Math.max(D.hours, Tmax) < 10 ? 1 : 0)}h</small>`;
+  $("#scrub").value = Math.round(T / Tmax * 1000);
+}
+function pulseKeeps() {
+  for (const a of D.arms) { const k = visible(a).filter(r => r.status === "keep").length;
+    if (prevKeeps[a.id] != null && k > prevKeeps[a.id]) { const c = $("#card-" + a.id); c && (c.classList.remove("pulse"), void c.offsetWidth, c.classList.add("pulse")); }
+    prevKeeps[a.id] = k; }
+}
+function render(fullFeed) { renderBoard(); pulseKeeps(); renderChart(); renderFeed(fullFeed); renderClock(); }
+function frame(ts) {
+  if (!playing) return;
+  const dt = lastFrame ? (ts - lastFrame) / 1000 : 0; lastFrame = ts;
+  T = Math.min(Tmax, T + dt * Tmax / dur);
+  render(false);
+  if (T >= Tmax) { playing = false; $("#play").textContent = "▶ Replay"; return; }
+  requestAnimationFrame(frame);
+}
+$("#play").onclick = () => {
+  if (playing) { playing = false; $("#play").textContent = "▶ Resume"; return; }
+  if (T >= Tmax) { T = 0; prevKeeps = {}; render(true); }
+  playing = true; lastFrame = 0; $("#play").textContent = "❚❚ Pause"; requestAnimationFrame(frame);
+};
+$("#scrub").oninput = e => { playing = false; $("#play").textContent = "▶ Replay"; T = e.target.value / 1000 * Tmax; prevKeeps = {}; render(true); };
+document.querySelectorAll("#speed button").forEach(b => b.onclick = () => { dur = +b.dataset.s;
+  document.querySelectorAll("#speed button").forEach(x => x.classList.toggle("on", x === b)); });
+document.querySelectorAll("#xmode button").forEach(b => b.onclick = () => { xmode = b.dataset.m;
+  document.querySelectorAll("#xmode button").forEach(x => x.classList.toggle("on", x === b)); renderChart(); });
+document.querySelectorAll("#feedmode button").forEach(b => b.onclick = () => { feedmode = b.dataset.f;
+  document.querySelectorAll("#feedmode button").forEach(x => x.classList.toggle("on", x === b)); renderFeed(true); });
+const live = new URLSearchParams(location.search).get("live"); if (live) setTimeout(() => location.reload(), +live * 1000);
+addEventListener("resize", () => renderChart());
+render(true);
+</script>
+</body>
+</html>

@@ -136,7 +136,8 @@ def run(code, workdir, phase="search", seed=None, mode=None, budget=None, grace=
             out["status"] = "crash"; text += "\n[harness] train.py finished without calling evaluate_bpb\n"
     if out["status"] == "timeout":
         text += f"\n[harness] killed after {out['wall_s']:.0f}s (limit {budget + grace}s)\n"
-    for key, pat in (("train_seconds", r"^training_seconds:\s+([\d.]+)"), ("peak_vram_mb", r"^peak_vram_mb:\s+([\d.]+)")):
+    for key, pat in (("train_seconds", r"^training_seconds:\s+([\d.]+)"), ("peak_vram_mb", r"^peak_vram_mb:\s+([\d.]+)"),
+                     ("total_tokens_M", r"^total_tokens_M:\s+([\d.]+)")):
         m = re.search(pat, text, re.M)  # informational only; the score comes from result.json
         if m:
             out[key] = float(m.group(1))

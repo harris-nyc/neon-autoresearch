@@ -4,11 +4,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.local/bin:$PATH"
-[ -f runs/neon/state.json ] && [ -f runs/opus/state.json ] || { echo "runs/neon or runs/opus is missing"; exit 1; }
-tmux kill-session -t race-neon 2>/dev/null || true
-tmux kill-session -t race-opus 2>/dev/null || true
-uv run python -m orchestrator.final_test --arms neon opus --seeds 3 2>&1 | tee runs/final_test.txt
-uv run python -m analysis.build_dashboard --arms "neon:Gemini 4 Neon" "opus:Claude Opus 5.5"
+ARMS=${ARMS:-"fable"}
+for a in $ARMS; do [ -f runs/$a/state.json ] || { echo "runs/$a is missing"; exit 1; }; tmux kill-session -t race-$a 2>/dev/null || true; done
+uv run python -m orchestrator.final_test --arms $ARMS --seeds 3 2>&1 | tee runs/final_test.txt
+uv run python -m analysis.build_dashboard --arms "fable:Claude Fable 5.2"
 uv sync --extra video && uv run playwright install --with-deps chromium >/dev/null
 sudo apt-get install -y -qq ffmpeg >/dev/null
 uv run python -m analysis.record_replay
